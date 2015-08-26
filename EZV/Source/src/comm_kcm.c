@@ -347,11 +347,11 @@ int CWallPadKcm::Write(UCHAR *pData, int size)
 		DBGDMP(DBG_WALLPAD, pData, size, TRUE);
 
 		//수신중일경우 대기
-		ulTick = GetTickCount();
+		ulTick = get_mono_time();
 		while(m_isRecv) 
 		{ 
 			usleep(1000); 
-			if(GetElapsedTick(ulTick) >= 300)
+			if(get_elapsed_time(ulTick) >= 300)
 			{
 				DBGMSG(DBG_WALLPAD, "[WallPad:KCM] Wait for read done: Timeout!!\r\n");
 				return -1;
@@ -478,12 +478,12 @@ void CWallPadKcm::RecvDataProc()
 	m_isRecv = TRUE;
 
 #if 0
-	ulTick = GetTickCount();
+	ulTick = get_mono_time();
 	while(recv_bytes < KCM_PACKET_SIZE)
 	{
 		recv_bytes += m_serial.Read(&buffer[recv_bytes], KCM_PACKET_SIZE-recv_bytes);
 
-		if(GetElapsedTick(ulTick) >= 500)
+		if(get_elapsed_time(ulTick) >= 500)
 		{
 			DBGMSG(DBG_WALLPAD, "[WallPad:KCM] Read Timeout\r\n");
 			DBGDMP(DBG_WALLPAD, buffer, recv_bytes, TRUE);
@@ -505,12 +505,12 @@ void CWallPadKcm::RecvDataProc()
 	}
 	recv_bytes = 2;
 	//Preamble이후의 데이타 수신
-	ulTick = GetTickCount();
+	ulTick = get_mono_time();
 	while(recv_bytes < KCM_PACKET_SIZE)
 	{
 		recv_bytes += m_serial.Read(&buffer[recv_bytes], KCM_PACKET_SIZE-recv_bytes);
 
-		if(GetElapsedTick(ulTick) >= 200)
+		if(get_elapsed_time(ulTick) >= 200)
 		{
 			DBGMSG(DBG_WALLPAD, "[WallPad:KCM] Read Timeout: %d bytes\r\n", recv_bytes);
 			DBGDMP(DBG_WALLPAD, buffer, recv_bytes, TRUE);

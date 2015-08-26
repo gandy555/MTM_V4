@@ -34,17 +34,17 @@ void CContextSetup::Init()
 {
 	CContext::Init();
 
-	SetRect(&m_rcTitle, SCR_WIDTH/2-TITLE_WIDTH/2, 20, TITLE_WIDTH, TITLE_HEIGHT);
-	SetRect(&m_rcArea, BUTTON_WIDTH+20, TITLE_HEIGHT+40, SCR_WIDTH - (BUTTON_WIDTH+20)*2, BUTTON_VCENTER_3-(TITLE_HEIGHT+40)+BUTTON_HEIGHT/2);
+	set_rect(&m_rcTitle, SCR_WIDTH/2-TITLE_WIDTH/2, 20, TITLE_WIDTH, TITLE_HEIGHT);
+	set_rect(&m_rcArea, BUTTON_WIDTH+20, TITLE_HEIGHT+40, SCR_WIDTH - (BUTTON_WIDTH+20)*2, BUTTON_VCENTER_3-(TITLE_HEIGHT+40)+BUTTON_HEIGHT/2);
 
-	SetRect(&m_rcButton[0], 0, BUTTON_VCENTER_1-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
-	SetRect(&m_rcButton[1], 0, BUTTON_VCENTER_2-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
-	SetRect(&m_rcButton[2], 0, BUTTON_VCENTER_3-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
-	SetRect(&m_rcButton[3], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_1-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
-	SetRect(&m_rcButton[4], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_2-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
-	SetRect(&m_rcButton[5], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_3-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[0], 0, BUTTON_VCENTER_1-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[1], 0, BUTTON_VCENTER_2-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[2], 0, BUTTON_VCENTER_3-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[3], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_1-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[4], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_2-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
+	set_rect(&m_rcButton[5], SCR_WIDTH-1-BUTTON_WIDTH, BUTTON_VCENTER_3-BUTTON_HEIGHT/2, BUTTON_WIDTH, BUTTON_HEIGHT);
 
-	SetRect(&m_rcGraph, m_rcArea.x+20, m_rcArea.y+20, m_rcArea.w-40, m_rcArea.h-40);
+	set_rect(&m_rcGraph, m_rcArea.x+20, m_rcArea.y+20, m_rcArea.w-40, m_rcArea.h-40);
 
 	m_pixmapArea  = GrNewPixmap(m_rcArea.w-2, m_rcArea.h-2, NULL);	//for WallPad Serial Dump
 	m_pixmapGraph = GrNewPixmap(m_rcGraph.w, m_rcGraph.h, NULL);	//for Microwave Graph
@@ -85,23 +85,23 @@ void CContextSetup::Draw(UINT nContextNum)
 	{
 		//우측버튼
 		vm_draw_textRect("이전", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-			SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+			set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 			vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		vm_draw_textRect("다음", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-			SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+			set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 			vm_draw_textRect("VolDn\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 
 		if(nContextNum != CONTEXT_SETUP_DOOR)
 		{
 			vm_draw_textRect("설정", g_wid, g_gc, &m_rcButton[BUTTON_RB], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RB].x, m_rcButton[BUTTON_RB].y+m_rcButton[BUTTON_RB].h+2, m_rcButton[BUTTON_RB].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RB].x, m_rcButton[BUTTON_RB].y+m_rcButton[BUTTON_RB].h+2, m_rcButton[BUTTON_RB].w, 16);
 				vm_draw_textRect("VolDn Long\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 	}
 	else
 	{
 		vm_draw_textRect("완료", g_wid, g_gc, &m_rcButton[BUTTON_RB], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-			SetRect(&rcText, m_rcButton[BUTTON_RB].x, m_rcButton[BUTTON_RB].y+m_rcButton[BUTTON_RB].h+2, m_rcButton[BUTTON_RB].w, 16);
+			set_rect(&rcText, m_rcButton[BUTTON_RB].x, m_rcButton[BUTTON_RB].y+m_rcButton[BUTTON_RB].h+2, m_rcButton[BUTTON_RB].w, 16);
 			vm_draw_textRect("VolUp Long\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 	}
 
@@ -117,10 +117,10 @@ void CContextSetup::Draw(UINT nContextNum)
 		if(m_nSetupStep==CONTEXT_SETUP_STEP_PAGE)
 		{
 			vm_draw_textRect("ON", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 				vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 			vm_draw_textRect("OFF", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 		break;
@@ -132,10 +132,10 @@ void CContextSetup::Draw(UINT nContextNum)
 		if(m_nSetupStep==CONTEXT_SETUP_STEP_PAGE)
 		{
 			vm_draw_textRect("ON", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 				vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 			vm_draw_textRect("OFF", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 		break;
@@ -147,10 +147,10 @@ void CContextSetup::Draw(UINT nContextNum)
 		if(m_nSetupStep==CONTEXT_SETUP_STEP_PAGE)
 		{
 			vm_draw_textRect("ON", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 				vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 			vm_draw_textRect("OFF", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 		break;
@@ -178,10 +178,10 @@ void CContextSetup::Draw(UINT nContextNum)
 		if(m_nSetupStep==CONTEXT_SETUP_STEP_PAGE)
 		{
 			vm_draw_textRect("증가", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 				vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 			vm_draw_textRect("감소", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 		break;
@@ -193,10 +193,10 @@ void CContextSetup::Draw(UINT nContextNum)
 		if(m_nSetupStep==CONTEXT_SETUP_STEP_PAGE)
 		{
 			vm_draw_textRect("증가", g_wid, g_gc, &m_rcButton[BUTTON_RT], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 				vm_draw_textRect("VolUp (L=빠르게)\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 			vm_draw_textRect("감소", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn (L=빠르게)\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 
@@ -204,9 +204,9 @@ void CContextSetup::Draw(UINT nContextNum)
 		DrawLine(m_rcGraph.x-1, m_rcGraph.y, m_rcGraph.x-1, m_rcGraph.y+m_rcGraph.h+1, g_wid, g_gc, DKGRAY, FALSE);
 		DrawLine(m_rcGraph.x-1, m_rcGraph.y+m_rcGraph.h+1, m_rcGraph.x+m_rcGraph.w+1, m_rcGraph.y+m_rcGraph.h+1, g_wid, g_gc, DKGRAY, FALSE);
 
-		SetRect(&rcText, m_rcArea.x, m_rcGraph.y, m_rcGraph.x-m_rcArea.x-2, 12);
+		set_rect(&rcText, m_rcArea.x, m_rcGraph.y, m_rcGraph.x-m_rcArea.x-2, 12);
 		vm_draw_textRect("1023", g_wid, g_gc, &rcText, g_font, 8, WHITE, TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE);
-		SetRect(&rcText, m_rcArea.x, m_rcGraph.y+m_rcGraph.h-6, m_rcGraph.x-m_rcArea.x-2, 12);
+		set_rect(&rcText, m_rcArea.x, m_rcGraph.y+m_rcGraph.h-6, m_rcGraph.x-m_rcArea.x-2, 12);
 		vm_draw_textRect("0", g_wid, g_gc, &rcText, g_font, 8, WHITE, TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE);
 		break;
 	case CONTEXT_SETUP_WALLPAD:
@@ -246,11 +246,11 @@ void CContextSetup::Draw(UINT nContextNum)
 				break;
 			}
 
-			SetRect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
+			set_rect(&rcText, m_rcButton[BUTTON_RT].x, m_rcButton[BUTTON_RT].y+m_rcButton[BUTTON_RT].h+2, m_rcButton[BUTTON_RT].w, 16);
 			vm_draw_textRect("VolUp\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 
 			vm_draw_textRect("명령전환", g_wid, g_gc, &m_rcButton[BUTTON_RM], g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
-				SetRect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
+				set_rect(&rcText, m_rcButton[BUTTON_RM].x, m_rcButton[BUTTON_RM].y+m_rcButton[BUTTON_RM].h+2, m_rcButton[BUTTON_RM].w, 16);
 				vm_draw_textRect("VolDn (L=직접명령)\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_TOP);
 		}
 
@@ -259,14 +259,14 @@ void CContextSetup::Draw(UINT nContextNum)
 	}
 
 	//하단안내
-	SetRect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h+2, m_rcArea.w, 32);
+	set_rect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h+2, m_rcArea.w, 32);
 	vm_draw_textRect("S:짧게누름,  L:길게누름\0", g_wid, g_gc, &rcText, g_font, 24, WHITE, TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE);
 
 	if(g_app_status.wallpad_type == WALLPAD_TYPE_SHN)
 	{
 		if(nContextNum==CONTEXT_SETUP_WALLPAD)
 		{
-			SetRect(&rcText, m_rcArea.x+200, m_rcArea.y+m_rcArea.h+2, m_rcArea.w-200, 32);
+			set_rect(&rcText, m_rcArea.x+200, m_rcArea.y+m_rcArea.h+2, m_rcArea.w-200, 32);
 			vm_draw_textRect("(FreeData패킷생략)\0", g_wid, g_gc, &rcText, g_font, 12, WHITE, TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE);
 		}
 	}
@@ -303,10 +303,10 @@ void CContextSetup::Proc(UINT nContextNum)
 		break;
 	case CONTEXT_SETUP_SOUND:		//Sound
 		sprintf(szText, "Volume Level: %d\0", g_app_status.volume);
-		SetRect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
+		set_rect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
 		vm_draw_textRect(szText, g_wid, g_gc, &rcText, g_font, 24, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
 
-		SetRect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h-32, m_rcArea.w, 32);
+		set_rect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h-32, m_rcArea.w, 32);
 		vm_draw_textRect("*가능한 범위: 0~8\0", g_wid, g_gc, &rcText, g_font, 18, WHITE, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
 		break;
 	case CONTEXT_SETUP_MICROWAVE:	//MicroWave
@@ -405,7 +405,7 @@ void CContextSetup::ThreadProc()
 
 		//텍스트 표시
 		sprintf(szText, "측정값: %04d,  설정값: %04d\0", nAdcValue, g_app_status.adc_value);
-		SetRect(&rcText, m_rcGraph.x+1, m_rcArea.y+5, m_rcGraph.w-2, 32);
+		set_rect(&rcText, m_rcGraph.x+1, m_rcArea.y+5, m_rcGraph.w-2, 32);
 		vm_draw_textRect2(szText, g_wid, g_gc, &rcText, g_font, 24, WHITE, BLACK, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
 
 		y1 = y2;
@@ -702,10 +702,10 @@ void CContextSetup::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
 						set_volume(g_app_status.volume);
 
 						sprintf(szText, "Volume Level: %d\0", g_app_status.volume);
-						SetRect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
+						set_rect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
 						vm_draw_textRect2(szText, g_wid, g_gc, &rcText, g_font, 24, WHITE, BLACK, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
 
-						PlayWavFile("/app/sound/touch.wav");
+						play_wav_file("/app/sound/touch.wav");
 					}
 					break;
 				case CONTEXT_SETUP_MICROWAVE:	// 증가
@@ -799,10 +799,10 @@ void CContextSetup::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
 						set_volume(g_app_status.volume);
 
 						sprintf(szText, "Volume Level: %d\0", g_app_status.volume);
-						SetRect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
+						set_rect(&rcText, m_rcArea.x, m_rcArea.y+m_rcArea.h/2-16, m_rcArea.w, 32);
 						vm_draw_textRect2(szText, g_wid, g_gc, &rcText, g_font, 24, WHITE, BLACK, TXT_HALIGN_CENTER|TXT_VALIGN_MIDDLE);
 
-						PlayWavFile("/app/sound/touch.wav");
+						play_wav_file("/app/sound/touch.wav");
 					}
 					break;
 				case CONTEXT_SETUP_MICROWAVE:	// 감소

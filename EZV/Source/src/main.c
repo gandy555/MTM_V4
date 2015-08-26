@@ -216,17 +216,17 @@ static BOOL app_init()
 
 	init_gpio_controller();
 	
-	init_microwave_controller();
-
+	init_microwave_controller(g_app_status.adc_value);
+	
 	init_watchdog_controller();
 	
 	init_comm();
 
 	gpio_clr(GPIOG, GPIO_AMP);	// AMP OFF
 
-	watchdog_set_period(MAX_WATCHDOG_PERIOD);
+	wdt_set_period(MAX_WATCHDOG_PERIOD);
 	
-	watchdog_enable();
+	wdt_enable();
 	
 	return TRUE;
 }
@@ -238,13 +238,14 @@ static BOOL app_init()
 int main(int arg_gc, char *argv[])
 {
 	mtm_msg_t msg;
-	USHORT key_f, key_evt;
+	u16 key_f, key_evt;
 		
 	app_init();
 
 	ui_switch_to(VIEW_ID_WEATHER);
 	
-	printf("Starting Main Loop..\r\n");
+	DBG_MSG("Starting Main Loop..\r\n");
+	
 	while (g_main_loop) {
 		if (msg_rcv(&msg) > 0) {
 			switch (msg.msg_id) {
@@ -261,6 +262,8 @@ int main(int arg_gc, char *argv[])
 
 		if (check_key_event(&key_f, &key_evt))
 			ui_operate_key(key_f, key_evt);
+
+		wdt_refresh();
 		
 		usleep(1000);
 	}

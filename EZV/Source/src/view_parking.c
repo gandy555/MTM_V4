@@ -139,7 +139,7 @@ void CContextParking::Proc(UINT nContextNum)
 		if (g_pWallPad) {
 			g_pWallPad->RequestParkingInfo();
 		}
-		PlayWavFile("/app/sound/parking_short.wav\0");
+		play_wav_file("/app/sound/parking_short.wav\0");
 		break;
 	case 1:
 		break;

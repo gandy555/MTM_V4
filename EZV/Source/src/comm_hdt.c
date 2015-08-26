@@ -225,11 +225,11 @@ int CWallPadHdt::Write(UCHAR *pData, int size)
 		DBGDMP(DBG_WALLPAD, pData, size, TRUE);
 
 		//수신중일경우 대기
-		ulTick = GetTickCount();
+		ulTick = get_mono_time();
 		while(m_isRecv) 
 		{ 
 			usleep(1000); 
-			if(GetElapsedTick(ulTick) >= 300)
+			if(get_elapsed_time(ulTick) >= 300)
 			{
 				DBGMSG(DBG_WALLPAD, "[WallPad:HDT] Wait for read done: Timeout!!\r\n");
 				return -1;

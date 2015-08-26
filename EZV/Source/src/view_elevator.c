@@ -240,10 +240,10 @@ void CContextElevator::Proc(UINT nContextNum)
 		}
 		break;
 	case 1:
-//		PlayWavFile("/app/sound/elevator.wav\0");
+//		play_wav_file("/app/sound/elevator.wav\0");
 		if (g_pWallPad) {
 			g_pWallPad->RequestElevatorStatus();
-			PlayWavFile("/app/sound/elevator.wav\0");
+			play_wav_file("/app/sound/elevator.wav\0");
 		}
 		break;
 	}
@@ -423,12 +423,12 @@ void CContextElevator::ThreadProc()
 			vm_draw_text(352, 253, 117, 101, 80, WHITE,
 				TXT_HALIGN_CENTER|TXT_VALIGN_TOP, szText);
 
-			ulTickDraw = GetTickCount();
+			ulTickDraw = get_mono_time();
 			m_nThreadStep++;
 		}
 		break;
 	case 2:
-		if(GetElapsedTick(ulTickDraw) >= 500)
+		if(get_elapsed_time(ulTickDraw) >= 500)
 		{
 			m_nThreadStep--;
 		}

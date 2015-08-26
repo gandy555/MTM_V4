@@ -1,122 +1,139 @@
-/*
+/******************************************************************************
+ * Filename:
+ *   controller_watchdog.c
+ *
+ * Description:
+ *   control the watchdog function
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-08-25
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-*/
+#include "main.h"
+#include "controller_watchdog.h"
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+static int g_wdt_fd;
+volatile WATCHreg	*g_wdt_reg;
 
-#include "common.h"
-
-CWatchdog::CWatchdog()
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+u8 init_watchdog_controller(void);
+void wdt_set_period(u32 _period);
+void wdt_enable(void);
+void wdt_disable(void);
+void wdt_refresh(void);
+void wdt_reboot(void);
+//------------------------------------------------------------------------------
+// Function Name  : init_watchdog_controller()
+// Description    :
+//------------------------------------------------------------------------------
+u8 init_watchdog_controller(void)
 {
-	m_fdMem = -1;
-	m_pWatchdog = NULL;
-}
-
-CWatchdog::~CWatchdog()
-{
-	DeInit();
-}
-
-BOOL CWatchdog::Init()
-{
-	m_fdMem = open(MEM_DEV, O_RDWR|O_SYNC);
-	if(m_fdMem == ERROR)
-	{
-		printf("[Failure]\r\n--> %s: %s open failure: errno=%d %s\r\n", __func__, MEM_DEV, errno, strerror(errno));
-		return FALSE;
+	g_wdt_fd = open(MEM_DEV, O_RDWR|O_SYNC);
+	if (g_wdt_fd < 0) 	{
+		DBG_MSG("<%s> open failed(%s)\r\n", __func__, strerror(errno));
+		return 0;
 	}
 
-	m_pWatchdog = (volatile WATCHreg *)mmap(
+	g_wdt_reg = (volatile WATCHreg *)mmap(
 				0,						// start
 				sizeof(WATCHreg),		// length
 				PROT_READ|PROT_WRITE,	// prot
 				MAP_SHARED,				// flag
-				m_fdMem,				// fd
+				g_wdt_fd,				// fd
 				WDT_TIMER_REG_PHYSICAL	// offset
 				);
 
-	if((int)m_pWatchdog == ERROR)
-	{
-		printf("[Failure]\r\n--> %s: mmap failure: errno=%d %s\r\n", __func__, errno, strerror(errno));
-		close(m_fdMem);
-		return FALSE;
-	}
-
-	return TRUE;
+	return 1;
 }
 
-void CWatchdog::DeInit()
+//------------------------------------------------------------------------------
+// Function Name  : wdt_set_period()
+// Description    :
+//------------------------------------------------------------------------------
+void wdt_set_period(u32 _period)
 {
-	Disable();
+	if (g_wdt_reg) {
+		if(_period > MAX_WATCHDOG_PERIOD) 
+			_period = MAX_WATCHDOG_PERIOD;
 
-	if(m_pWatchdog > 0)
-		munmap((void *)m_pWatchdog, sizeof(WATCHreg));
-
-	if(m_fdMem > 0)
-		close(m_fdMem);
-
-	m_pWatchdog	= NULL;
-	m_fdMem		= -1;
-}
-
-void CWatchdog::SetPeriod(UINT msPeriod)
-{
-	if(m_pWatchdog)
-	{
-		if(msPeriod > MAX_WATCHDOG_PERIOD)
-		{
-			msPeriod = MAX_WATCHDOG_PERIOD;
-		}
-		m_pWatchdog->rWTDAT = TICKS_PER_SECOND / 1000 * msPeriod;
-		m_pWatchdog->rWTCNT = TICKS_PER_SECOND / 1000 * msPeriod;
+		g_wdt_reg->rWTDAT = TICKS_PER_SECOND / 1000 * _period;
+		g_wdt_reg->rWTCNT = TICKS_PER_SECOND / 1000 * _period;
 	}
 }
 
-void CWatchdog::Enable()
+//------------------------------------------------------------------------------
+// Function Name  : wdt_enable()
+// Description    :
+//------------------------------------------------------------------------------
+void wdt_enable(void)
 {
-	USHORT usReg;
+	u16 n_reg;
 
-	if(m_pWatchdog)
-	{
-		usReg = m_pWatchdog->rWTCON;
+	if (g_wdt_reg) {
+		n_reg = g_wdt_reg->rWTCON;
 
-		usReg |=  (255 << 8);	//Prescaler Value			0 ~ 255
-		usReg |=  (1 << 5);		//Watchdog Timer			0=Disable, 1=Enable
-		usReg &= ~(3 << 3);		//Clock Division Factor		0=16, 1=32, 2=64, 3=128
-		usReg |=  (1 << 0);		//Watchdog timer output for reset	0=Disable, 1=Enable
+		n_reg |=  (255 << 8);	//Prescaler Value			0 ~ 255
+		n_reg |=  (1 << 5);		//Watchdog Timer			0=Disable, 1=Enable
+		n_reg &= ~(3 << 3);		//Clock Division Factor		0=16, 1=32, 2=64, 3=128
+		n_reg |=  (1 << 0);		//Watchdog timer output for reset	0=Disable, 1=Enable
 
-		m_pWatchdog->rWTCON = usReg;
+		g_wdt_reg->rWTCON = n_reg;
 	}
 }
 
-void CWatchdog::Disable()
+//------------------------------------------------------------------------------
+// Function Name  : wdt_disable()
+// Description    :
+//------------------------------------------------------------------------------
+void wdt_disable(void)
 {
-	USHORT usReg;
+	u16 n_reg;
 
-	if(m_pWatchdog)
-	{
-		usReg = m_pWatchdog->rWTCON;
+	if (g_wdt_reg) {
+		n_reg = g_wdt_reg->rWTCON;
 
-	//	usReg |=  (255 << 8);	//Prescaler Value			0 ~ 255
-		usReg &= ~(1 << 5);		//Watchdog Timer			0=Disable, 1=Enable
-	//	usReg &= ~(3 << 3);		//Clock Division Factor		0=16, 1=32, 2=64, 3=128
-		usReg &= ~(1 << 0);		//Watchdog timer output for reset	0=Disable, 1=Enable
+	//	n_reg |=  (255 << 8);	//Prescaler Value			0 ~ 255
+		n_reg &= ~(1 << 5);		//Watchdog Timer			0=Disable, 1=Enable
+	//	n_reg &= ~(3 << 3);		//Clock Division Factor		0=16, 1=32, 2=64, 3=128
+		n_reg &= ~(1 << 0);		//Watchdog timer output for reset	0=Disable, 1=Enable
 
-		m_pWatchdog->rWTCON = usReg;
+		g_wdt_reg->rWTCON = n_reg;
 	}
 }
 
-void CWatchdog::Refresh()
+//------------------------------------------------------------------------------
+// Function Name  : wdt_refresh()
+// Description    :
+//------------------------------------------------------------------------------
+void wdt_refresh(void)
 {
-	if(m_pWatchdog)
-	{
-		m_pWatchdog->rWTCNT = m_pWatchdog->rWTDAT;
-	}
+	if (g_wdt_reg) 
+		g_wdt_reg->rWTCNT = g_wdt_reg->rWTDAT;
 }
 
-void CWatchdog::Reboot()
+//------------------------------------------------------------------------------
+// Function Name  : wdt_reboot()
+// Description    :
+//------------------------------------------------------------------------------
+void wdt_reboot(void)
 {
-	SetPeriod(10);
-	Enable();
+	wdt_set_period(10);
+	wdt_enable();
 	while(1);
 }
-
 

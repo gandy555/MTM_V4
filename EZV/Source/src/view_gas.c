@@ -162,7 +162,7 @@ void CContextGas::Proc(UINT nContextNum)
 	case 2:
 	//	sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[m_isGasOff]);
 		sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[g_app_status.gas_stat]);
-		PlayWavFile(szWaveFilePath);
+		play_wav_file(szWaveFilePath);
 		break;
 	}
 

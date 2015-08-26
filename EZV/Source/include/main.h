@@ -4,6 +4,8 @@
 /******************************************************************************
  * Variable Type Definition
  ******************************************************************************/
+#include "type.h"
+
 // major.minor.revision
 #define RELEASE_VERSION	"v0.01.A"
 #define RELEASE_DATE		"20150812"
