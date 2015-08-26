@@ -22,14 +22,21 @@
 #define TXT_ALIGN_LEFT		(TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE)
 
 typedef struct {
-	RECT rect;
+	int x;
+	int y;
+	int w;
+	int h;
+} rect_t;
+
+typedef struct {
+	rect_t rect;
 	GR_GC_ID gc;
 	GR_DRAW_ID img;
 	GR_WINDOW_ID wid;
 } obj_img_t;
 
 typedef struct {
-	RECT rect;
+	rect_t rect;
 	GR_GC_ID gc;
 	GR_DRAW_ID imgs[MAX_ICON_IMG_CNT];
 	GR_WINDOW_ID wid;
@@ -68,6 +75,7 @@ extern obj_img_t *ui_create_img_obj(int x, int y, int w, int h, char *_path);
 extern obj_icon_t *ui_create_icon_obj(int x, int y, int w, int h);
 extern int ui_load_icon_img(obj_icon_t *_h, int _idx, char *_path);
 extern void ui_draw_image(obj_img_t *_obj_h);
+extern void ui_draw_image_part(obj_img_t *_obj_h, rect_t *_dst, rect_t *_src);
 extern void ui_draw_icon_image(obj_icon_t *_obj_h, int _idx);
 extern void ui_draw_rect(int x, int y, int w, int h, u32 co, int fill);
 extern void ui_draw_text(int x, int y, int w, int h, u32 size, u32 co, u32 align, char *str);

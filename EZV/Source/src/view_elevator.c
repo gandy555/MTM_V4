@@ -106,49 +106,31 @@ void view_elevator_draw(void)
 {
 	char temp_str[64] = {0,};
 	char *side_txt;
+	rect_t rect;
 	
 	if (diff_elevator_info() == 0)
 		return;
 	
 	update_elevator_info();
-	
-	/* contents of left side */
-	side_txt = g_weather_short_text_tbl[l_weather_idx];
-	ui_draw_text(65, 51, 96, 32, 24, RGB(1,19,73), TXT_ALIGN_CENTER, side_txt);
 
-	sprintf(temp_str, "%2d/%2d\0",
-		g_app_status.temp_low_left / 10, g_app_status.temp_high_left / 10);
-	ui_draw_text(17, 100, 112, 32, 24, WHITE, TXT_ALIGN_RIGHT, temp_str);
-	
-	ui_draw_icon_image(g_l_icon_h, l_weather_idx);
+	rect.x = 245;
+	rect.y = 89;
+	rect.w = 500;
+	rect.h = 32;
+	ui_draw_image_part(g_elev_bg_h, &rect, &rect);
 
-	/* contents of right side */
-	memset(temp_str, 0, sizeof(temp_str));
-	side_txt = g_weather_short_text_tbl[r_weather_idx];
-	ui_draw_text(647, 51, 96, 32, 24, RGB(162,199,213), TXT_ALIGN_CENTER, side_txt);
-
-	sprintf(temp_str, "%2d/%2d\0",
-		g_app_status.temp_low_right / 10, g_app_status.temp_high_right / 10);
-	ui_draw_text(599, 100, 112, 32, 24, WHITE, TXT_ALIGN_RIGHT, temp_str);
-	
-	ui_draw_icon_image(g_r_icon_h, r_weather_idx);
-
-	/* gas status */
-	ui_draw_icon_image(g_gas_icon_h, g_app_status.gas_stat);
-	
-	/* parking information */
-	ui_draw_image(g_park_bg_h);
-	parking_list_get_item(0, &parking_info);		
-	if (parking_info.status == PARKING_STATUS_IN) {
-		memset(temp_str, 0, sizeof(temp_str));
-		sprintf(temp_str, "%s-%s", parking_info.floor, parking_info.zone);
-		ui_draw_text(73, 436, 180, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
+	switch (g_elev_status) {
+	case MTM_DATA_EV_STATUS_STOP:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 정지해 있습니다");
+		break;
+	case MTM_DATA_EV_STATUS_UP:
+	case MTM_DATA_EV_STATUS_DOWN:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
+		break;
+	case MTM_DATA_EV_STATUS_ARRIVE:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 도착 하였습니다");
+		break;
 	}
-	
-	/* version information */
-	memset(temp_str, 0, sizeof(temp_str));
-	sprintf(temp_str, "[%s-%s %s ]", RELEASE_VERSION, RELEASE_DATE, RELEASE_PRODUCT);
-	ui_draw_text(0, 400, strlen(temp_str)*6+4, 14, 12, BLACK, TXT_ALIGN_CENTER);
 }
 
 //------------------------------------------------------------------------------
