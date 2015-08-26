@@ -280,6 +280,21 @@ void ui_draw_image(obj_img_t *_obj_h)
 }
 
 //------------------------------------------------------------------------------
+// Function Name  : ui_draw_image_part()
+// Description    : 
+//------------------------------------------------------------------------------
+void ui_draw_image_part(obj_img_t *_obj_h, rect_t *_dst, rect_t *_src)
+{
+	if (_obj_h == NULL) 
+		return;
+	
+	GrDrawImagePartToFit(_obj_h->wid, _obj_h->gc,
+		_dst->x, _dst->y, _dst->w, _dst->h,
+		_src->x, _src->y, _src->w, _src->h,
+		_obj_h->img);
+}
+
+//------------------------------------------------------------------------------
 // Function Name  : ui_draw_icon_image()
 // Description    : 
 //------------------------------------------------------------------------------
