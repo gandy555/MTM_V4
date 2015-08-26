@@ -1,497 +1,227 @@
-/*
-*/
-#include "common.h"
-#include "context_elevator.h"
+/******************************************************************************
+ * Filename:
+ *   view_elevator.c
+ *
+ * Description:
+ *   The elevator display the related information 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-08-26
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
 #include "main.h"
+#include "view_elevator.h"
 
-#define ELEVATOR_STAT_REQ				(1<<0)
-#define ELEVATOR_STAT_RES_WAIT			(1<<1)
-#define ELEVATOR_STAT_RES_TIMEOUT		(1<<2)
-#define ELEVATOR_CALL_REQ				(1<<3)
-#define ELEVATOR_CALL_RES_WAIT			(1<<4)
-#define ELEVATOR_CALL_RES_TIMEOUT		(1<<5)
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+enum {
+	ICON_IMG_ARROW_BLANK = 0,
+	ICON_IMG_ARROW_UP_1,
+	ICON_IMG_ARROW_UP_2,
+	ICON_IMG_ARROW_UP_3,
+	ICON_IMG_ARROW_DOWN_1,
+	ICON_IMG_ARROW_DOWN_2,
+	ICON_IMG_ARROW_DOWN_3,
+	MAX_ICON_IMG_ARROW,
+};
 
-UCHAR	g_ElevatorTimerParam = 0;
-UCHAR	g_ElevatorStatResTimeout = 0;
-UCHAR	g_ElevatorCallResTimeout = 0;
+static obj_img_t *g_elev_bg_h;
+static obj_img_t *g_elev_img_h;
+static obj_img_t *g_icon_img_h;
+static obj_img_t *g_floor_img_h;
+static obj_icon_t *g_arrow_icon_h;
 
-#if 1
-//엘리베이터 타이머 핸들러 : 1초
-void elevator_timer_handler(void *pParam)
+static u8 g_elev_status = 0;
+static s8 g_elev_floor = 0;
+static workqueue_list_t *g_elevator_workqueue;
+#define ELEVATOR_WQ_H	g_elevator_workqueue
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+void view_elevator_init(void);
+
+//------------------------------------------------------------------------------
+// Function Name  : update_elevator_info()
+// Description    :
+//------------------------------------------------------------------------------
+void update_elevator_info(void)
 {
-	UCHAR* pucParam = (UCHAR *)pParam;
+	g_elev_status = g_app_status.elevator_status;
+	g_elev_floor = g_app_status.elevator_floor;
+}
 
-	if(g_state.GetState() != STATE_ELEVATOR)
-	{
-		g_timer.KillTimer(ELEVATOR_TIMER);
+//------------------------------------------------------------------------------
+// Function Name  : diff_elevator_info()
+// Description    :
+//------------------------------------------------------------------------------
+u8 diff_elevator_info(void)
+{
+	if (g_elev_status != g_app_status.elevator_status)
+		return 1;
+	
+	if (g_elev_floor != g_app_status.elevator_floor)
+		return 1;
+
+	return 0;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_entry(void)
+{
+	char temp_str[64] = {0,};
+	char *side_txt;
+	
+	PRINT_FUNC_CO();
+
+	update_elevator_info();
+
+	ui_draw_image(g_elev_bg_h);
+
+	ui_draw_image(g_icon_img_h);
+
+	ui_draw_image(g_elev_img_h);
+
+	ui_draw_image(g_floor_img_h);
+	
+	ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터 상태 확인중 입니다");
+	//ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터를 호출하였습니다");
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_draw(void)
+{
+	char temp_str[64] = {0,};
+	char *side_txt;
+	
+	if (diff_elevator_info() == 0)
 		return;
-	}
-
-	if(*pucParam & ELEVATOR_STAT_REQ)
-	{
-		if(*pucParam & ELEVATOR_STAT_RES_WAIT)
-		{
-			*pucParam |= ELEVATOR_STAT_RES_TIMEOUT;
-			g_ElevatorStatResTimeout += ELEVATOR_REQ_TIME;
-			if(g_ElevatorStatResTimeout >= ELEVATOR_RES_TIMEOUT)
-			{
-				printf("Elevator Stat Response Timeout!\r\n");
-				g_timer.KillTimer(ELEVATOR_TIMER);
-			}
-		}
-		else
-		{
-			*pucParam |= ELEVATOR_STAT_RES_WAIT;
-			g_ElevatorStatResTimeout = 0;
-		//	g_wallpad_sns.RequestReserve(SNS_CMD_ELEVATOR_STAT_REQ);
-			if(g_pWallPad)
-			{
-				g_pWallPad->RequestElevatorStatus();
-			}
-		}
-	}
-
-	if(*pucParam & ELEVATOR_CALL_RES_WAIT)
-	{
-		*pucParam |= ELEVATOR_CALL_RES_TIMEOUT;
-	}
-
-//	g_wallpad_sns.RequestReserve(SNS_CMD_ELEVATOR_STAT_REQ);
-	if(g_pWallPad)
-	{
-		g_pWallPad->RequestElevatorStatus();
-	}
-}
-#endif
-
-//
-// Construction/Destruction
-//
-CContextElevator::CContextElevator(GR_WINDOW_ID wid, GR_GC_ID gc)
-	: CContext(wid, gc)
-{
-	m_isElevatorStatusSuccess = FALSE;
-	m_isElevatorCalled = FALSE;
-	m_isElevatorCallSuccess = FALSE;
-	m_isElevatorArrive = FALSE;
-
-	m_nElevatorDir = 0;
-	m_nElevatorFloor = 0;
-
-	m_pObjectIcon = NULL;
-}
-
-CContextElevator::~CContextElevator()
-{
-}
-
-//
-// Member Function
-//
-void CContextElevator::Init()
-{
-	CObject* pObject;
-	CObjectIcon* pObjectIcon;
-	UINT id;
-
-	CContext::Init();
-
-	// Blank 배경 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 0, 0, g_scr_info.cols, g_scr_info.rows);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/blank_bg.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 아이콘 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 58, 50, 158, 158);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/icon_elevator.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 엘레베이터 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 510, 175, 207, 258);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/elevator_image.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 엘레베이터 층표시 박스 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 339, 240, 143, 127);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/elevator_display.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 엘레베이터 화살표
-//	pObject = new CObjectIcon(m_wid_parent, m_gc, 336, 245, 137, 137);
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 232, 210, 86, 190);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_ARROW_COUNT);
-		pObject->LoadImage(IMG_ENUM_ARROW_BLANK,	"/app/img/el_png/arrow_back.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_UP_1,		"/app/img/el_png/arrow_up_1.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_UP_2,		"/app/img/el_png/arrow_up_2.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_UP_3,		"/app/img/el_png/arrow_up_3.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_DOWN_1,	"/app/img/el_png/arrow_down_1.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_DOWN_2,	"/app/img/el_png/arrow_down_2.png");
-		pObject->LoadImage(IMG_ENUM_ARROW_DOWN_3,	"/app/img/el_png/arrow_down_3.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-}
-
-void CContextElevator::DeInit()
-{
-	CContext::DeInit();
 	
-	m_ObjectList.RemoveAll();
-}
-
-void CContextElevator::Draw(UINT nContextNum)
-{
-	CObjectIcon* pObjectIcon = NULL;
-
-	if(m_gc==0) return;
-
-	DBGMSGC(DBG_ELEVATOR, "++ [%d]\r\n", nContextNum);
-
-	//배경
-	m_ObjectList.Draw(ELEVATOR_OBJ_BG);
-
-	//아이콘
-	m_ObjectList.Draw(ELEVATOR_OBJ_ICON);
-
-	//텍스트
-	/*
-	vm_draw_text(245, 89, 500, 32, 24, WHITE,
-		TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터를 호출하였습니다");
-	*/
+	update_elevator_info();
 	
-	//엘레베이터 이미지
-	m_ObjectList.Draw(ELEVATOR_OBJ_IMAGE);
+	/* contents of left side */
+	side_txt = g_weather_short_text_tbl[l_weather_idx];
+	ui_draw_text(65, 51, 96, 32, 24, RGB(1,19,73), TXT_ALIGN_CENTER, side_txt);
 
-	//엘레베이터 층표시 박스
-	m_ObjectList.Draw(ELEVATOR_OBJ_DISPLAY);
+	sprintf(temp_str, "%2d/%2d\0",
+		g_app_status.temp_low_left / 10, g_app_status.temp_high_left / 10);
+	ui_draw_text(17, 100, 112, 32, 24, WHITE, TXT_ALIGN_RIGHT, temp_str);
+	
+	ui_draw_icon_image(g_l_icon_h, l_weather_idx);
 
-	switch(nContextNum)
-	{
-	case 0:		
-		vm_draw_text(245, 89, 500, 32, 24, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터 호출 중입니다");
-		break;
-	case 1:
-		vm_draw_text(245, 89, 500, 32, 24, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터 상태 확인중 입니다");
-		break;
-	case 2:
-		if(g_app_status.wallpad_type == WALLPAD_TYPE_KCM)
-		{
-			switch(m_nElevatorDir)
-			{
-			case MTM_DATA_EV_STATUS_STOP:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 정지해 있습니다");
-				break;
-			case MTM_DATA_EV_STATUS_UP:
-			case MTM_DATA_EV_STATUS_DOWN:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 이동중 입니다");
-				break;
-			case MTM_DATA_EV_STATUS_ARRIVE:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 도착 하였습니다");
-				break;
-			}
-		}
-		break;
+	/* contents of right side */
+	memset(temp_str, 0, sizeof(temp_str));
+	side_txt = g_weather_short_text_tbl[r_weather_idx];
+	ui_draw_text(647, 51, 96, 32, 24, RGB(162,199,213), TXT_ALIGN_CENTER, side_txt);
+
+	sprintf(temp_str, "%2d/%2d\0",
+		g_app_status.temp_low_right / 10, g_app_status.temp_high_right / 10);
+	ui_draw_text(599, 100, 112, 32, 24, WHITE, TXT_ALIGN_RIGHT, temp_str);
+	
+	ui_draw_icon_image(g_r_icon_h, r_weather_idx);
+
+	/* gas status */
+	ui_draw_icon_image(g_gas_icon_h, g_app_status.gas_stat);
+	
+	/* parking information */
+	ui_draw_image(g_park_bg_h);
+	parking_list_get_item(0, &parking_info);		
+	if (parking_info.status == PARKING_STATUS_IN) {
+		memset(temp_str, 0, sizeof(temp_str));
+		sprintf(temp_str, "%s-%s", parking_info.floor, parking_info.zone);
+		ui_draw_text(73, 436, 180, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
 	}
-
-	DBGMSGC(DBG_ELEVATOR, "--\r\n");
+	
+	/* version information */
+	memset(temp_str, 0, sizeof(temp_str));
+	sprintf(temp_str, "[%s-%s %s ]", RELEASE_VERSION, RELEASE_DATE, RELEASE_PRODUCT);
+	ui_draw_text(0, 400, strlen(temp_str)*6+4, 14, 12, BLACK, TXT_ALIGN_CENTER);
 }
 
-void CContextElevator::Proc(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_exit(void)
 {
-	DBGMSGC(DBG_ELEVATOR, "++ [%d]\r\n", nContextNum);
+	PRINT_FUNC_CO();
 
-	switch(nContextNum)
-	{
-	case 0:
-		m_nElevatorDir = 0;
-		m_nElevatorFloor = 0;
-		m_pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(ELEVATOR_OBJ_ARROW);
-		m_nThreadStep = 0;
-		g_app_status.elevator_status = 0;
-		g_app_status.elevator_floor = 0;
-		if (g_pWallPad) {
-			g_pWallPad->RequestElevatorCall();
-			//	백라이트 타이머 : 5분
-			g_timer.SetTimer(BACK_LIGHT_TIMER, ELEVATOR_CALL_WAIT_TIME, NULL, "LCD BackLight Timer");
-		}
-		break;
-	case 1:
-//		PlayWavFile("/app/sound/elevator.wav\0");
-		if (g_pWallPad) {
-			g_pWallPad->RequestElevatorStatus();
-			PlayWavFile("/app/sound/elevator.wav\0");
-		}
-		break;
-	}
-
-	DBGMSGC(DBG_ELEVATOR, "--\r\n");
+	workqueue_delete_all(ELEVATOR_WQ_H);
 }
 
-void CContextElevator::TimerProc(UINT idTimer)
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_key(u32 _type, u32 _code)
 {
-	switch(idTimer)
-	{
-	case RESPONSE_TIMER:
-		if (g_pWallPad)
-			g_pWallPad->RequestElevatorCall();
-		break;
-	case RETRY_TIMEOUT:
-		ChangeContext(1);
-		break;
-	}
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
 }
 
-void CContextElevator::RecvProc(UCHAR *pPacket)
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_init(void)
 {
-	PMTM_HEADER pHdr = (PMTM_HEADER)pPacket;
-	PMTM_DATA_ELEVATOR pElevatorInfo;
+	obj_img_t *bg_h = g_elev_bg_h;
+	obj_img_t *icon_img_h = g_icon_img_h;
+	obj_img_t *elev_h = g_elev_img_h;	
+	obj_img_t *floor_h = g_floor_img_h;
+	obj_icon_t *arrow_h = g_arrow_icon_h;
 
-	if(pPacket == NULL) return;
+	ELEVATOR_WQ_H = workqueue_create("ELEVATOR VIEW");
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
 
-	DBGMSGC(DBG_WEATHER, "++\r\n");
+	// elevator icon img
+	icon_img_h = ui_create_img_obj(58, 50, 158, 158, 
+					"/app/img/icon_elevator.png");
+	
+	// elevator img
+	elev_h = ui_create_img_obj(510, 175, 207, 258,
+				"/app/img/elevator_image.png");
 
-	switch(pHdr->type)
-	{
-	case MTM_DATA_TYPE_WEATHER:
-		break;
-	case MTM_DATA_TYPE_PARKING:
-		break;
-	case MTM_DATA_TYPE_ELEVATOR:
-		if(g_isBackLightOn)
-		{
-			pElevatorInfo = (PMTM_DATA_ELEVATOR)&pPacket[sizeof(MTM_HEADER)];
-			switch(pElevatorInfo->status)
-			{
-			case MTM_DATA_EV_STATUS_STOP:
-			case MTM_DATA_EV_STATUS_UP:
-			case MTM_DATA_EV_STATUS_DOWN:
-			case MTM_DATA_EV_STATUS_ARRIVE:
-				m_isElevatorStatusSuccess = (pElevatorInfo->status != MTM_DATA_EV_STATUS_ERROR) ? TRUE : FALSE;
-
-				m_nElevatorDir   = pElevatorInfo->status;
-				m_nElevatorFloor = pElevatorInfo->floor;
-
-				m_nContextNum = 2;	//화면갱신없이 ContextNum만 바꿈. ThreadProc에서 처리목적
-				if (pElevatorInfo->status != MTM_DATA_EV_STATUS_ARRIVE)
-					g_pWallPad->RequestElevatorStatus();
-			//	ChangeContext(2);
-				break;
-			case MTM_DATA_EV_STATUS_CALLED:
-				ChangeContext(1);
-				break;
-			}
-
-			//도착하면 백라이트 타이버 복귀 : 10초
-			if(pElevatorInfo->status == MTM_DATA_EV_STATUS_ARRIVE)
-			{
-				g_timer.SetTimer(BACK_LIGHT_TIMER, BACK_LIGHT_TIME, NULL, "LCD BackLight Timer");
-			}
-		}
-		break;
-	case MTM_DATA_TYPE_GAS:
-		break;
-	case MTM_DATA_TYPE_LIGHT:
-		break;
-	case MTM_DATA_TYPE_SECURITY:
-		break;
+	// floor img
+	floor_h = ui_create_img_obj(339, 240, 143, 127,
+				"/app/img/elevator_display.png");
+	
+	// arrow icon 
+	arrow_h = ui_create_icon_obj(232, 210, 86, 190);
+	if (arrow_h) {
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_BLANK,
+			"/app/img/el_png/arrow_back.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_1,
+			"/app/img/el_png/arrow_up_1.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_2,
+			"/app/img/el_png/arrow_up_2.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_3,
+			"/app/img/el_png/arrow_up_3.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_1,
+			"/app/img/el_png/arrow_down_1.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_2,
+			"/app/img/el_png/arrow_down_2.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_3,
+			"/app/img/el_png/arrow_down_3.png");
 	}
 
-	DBGMSGC(DBG_WEATHER, "--\r\n");
-}
-
-void CContextElevator::ThreadProc()
-{
-	static int nArrowStep;
-	static ULONG ulTickDraw;
-	char szText[32] = {0,};
-
-	//호출이 성공하고 엘리베이터 상태를 모니터링 하는 동안 동작함
-//	if(m_nContextNum==0) return;
-
-	switch(m_nThreadStep)
-	{
-	case 0:
-		nArrowStep = 0;
-		m_nThreadStep++;
-		break;
-	case 1:
-		if( m_pObjectIcon && (m_nContextNum==2))
-		{
-			RedrawImage(m_wid_parent, m_gc, 245, 89, 500, 32, 245, 89, 500, 32, ELEVATOR_OBJ_BG);
-			switch(m_nElevatorDir)
-			{
-			case MTM_DATA_EV_STATUS_STOP:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 정지해 있습니다");
-				break;
-			case MTM_DATA_EV_STATUS_UP:
-			case MTM_DATA_EV_STATUS_DOWN:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 이동중 입니다");
-				break;
-			case MTM_DATA_EV_STATUS_ARRIVE:
-				vm_draw_text(245, 89, 500, 32, 24, WHITE,
-					TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "엘레베이터가 도착 하였습니다");
-				break;
-			}
-
-			//방향표시
-			if( (m_nElevatorDir == MTM_DATA_EV_STATUS_STOP) || (m_nElevatorDir == MTM_DATA_EV_STATUS_ARRIVE) )
-			{
-				m_pObjectIcon->Draw(IMG_ENUM_ARROW_BLANK);
-				nArrowStep = 0;
-			}
-			else if(m_nElevatorDir == MTM_DATA_EV_STATUS_DOWN)
-			{
-				switch(nArrowStep)
-				{
-				case 0:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_DOWN_1);
-					break;
-				case 1:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_DOWN_2);
-					break;
-				default:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_DOWN_3);
-					break;
-				}
-
-				nArrowStep++;
-				if(nArrowStep==5) nArrowStep=0;
-			}
-			else if(m_nElevatorDir == MTM_DATA_EV_STATUS_UP)
-			{
-				switch(nArrowStep)
-				{
-				case 0:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_UP_1);
-					break;
-				case 1:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_UP_2);
-					break;
-				default:
-					m_pObjectIcon->Draw(IMG_ENUM_ARROW_UP_3);
-					break;
-				}
-
-				nArrowStep++;
-				if(nArrowStep==5) nArrowStep=0;
-			}
-
-			//층표시
-			if(m_nElevatorFloor > 0)
-			{
-				if(m_nElevatorFloor >= 128)
-					sprintf(szText, "B%2d\0", 256-m_nElevatorFloor);
-				else
-					sprintf(szText, "%3d\0", m_nElevatorFloor);
-			}
-			else if(m_nElevatorFloor < 0)
-			{
-				sprintf(szText, "B%2d\0", m_nElevatorFloor*(-1));
-			}
-		//	else
-		//	{
-		//		sprintf(szText, "L\0");
-		//	}
-
-			RedrawImage(m_wid_parent, m_gc, 352, 253, 117, 101, 12, 12, 117, 101, ELEVATOR_OBJ_DISPLAY);
-			vm_draw_text(352, 253, 117, 101, 80, WHITE,
-				TXT_HALIGN_CENTER|TXT_VALIGN_TOP, szText);
-
-			ulTickDraw = GetTickCount();
-			m_nThreadStep++;
-		}
-		break;
-	case 2:
-		if(GetElapsedTick(ulTickDraw) >= 500)
-		{
-			m_nThreadStep--;
-		}
-		break;
-	}
-}
-
-void CContextElevator::ButtonDown(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_ELEVATOR, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_DOWN)
-	{
-	}
-	else if(usEventEnum == MTM_GPIO_BUTTON_LONG)
-	{
-#if 0	
-		if( CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_FRONT_RIGHT_TOP)|BIT_FLAG(GPIO_FRONT_RIGHT_BOTTOM)) ||
-			CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_REAR_VOL_UP)|BIT_FLAG(GPIO_REAR_VOL_DOWN)) )
-		{
-			g_state.ChangeState(STATE_SETUP);
-		}
-#endif		
-	}
-
-	DBGMSGC(DBG_ELEVATOR, "--\r\n");
-}
-
-void CContextElevator::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_ELEVATOR, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_UP)
-	{
-		switch(usGpioFlag)
-		{
-		case GPIO_FLAG_FRONT_LEFT_TOP:		//Weather
-			g_state.ChangeState(STATE_WEATHER);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_MIDDLE:	//Elevator
-			ChangeContext(0);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_BOTTOM:	//Parking
-			g_state.ChangeState(STATE_PARKING);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_TOP:		//Gas
-			g_state.ChangeState(STATE_GAS);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_MIDDLE:	//Light
-			g_state.ChangeState(STATE_LIGHT);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_BOTTOM:	//Security
-			g_state.ChangeState(STATE_SECURITY);
-			break;
-		}
-
-		//백라이트 타이머 원상복귀 : 10초
-		if(usGpioFlag != GPIO_FLAG_FRONT_LEFT_MIDDLE)
-		{
-			g_timer.SetTimer(BACK_LIGHT_TIMER, BACK_LIGHT_TIME, NULL, "LCD BackLight Timer");
-		}
-	}
-
-	DBGMSGC(DBG_ELEVATOR, "--\r\n");
+	ui_register_view(VIEW_ID_ELEVATOR,
+		view_elevator_entry, view_elevator_draw,
+		view_elevator_exit, view_elevator_key);
 }
 

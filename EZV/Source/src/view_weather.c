@@ -31,14 +31,25 @@
 
 #define MAX_MENT_BUFF_SIZE		52
 
-char g_weather_long_text_tbl[IMG_ENUM_WEATHER_COUNT][MAX_MENT_BUFF_SIZE] = {
-	"오늘은 날씨가 맑을 예정입니다\0",						// IMG_ENUM_WEATHER_SERENITY
-	"오늘은 날씨가 구름이 조금 낄 예정입니다\0",				// IMG_ENUM_WEATHER_PARTLY_CLOUDY
-	"오늘은 날씨가 흐릴 예정입니다\0",						// IMG_ENUM_WEATHER_CLOUDY
-	"오늘은 소나기가 올 예정이오니 우산을 준비하세요\0",		// IMG_ENUM_WEATHER_SHOWER
-	"오늘은 비가 올 예정이오니 우산을 준비하세요\0",			// IMG_ENUM_WEATHER_RAINNY
-	"오늘은 뇌우가 칠 예정이오니 우산을 준비하세요\0",		// IMG_ENUM_WEATHER_THUNDERSTORM
-	"오늘은 눈이 올 예정이오니 따뜻하게 입고 외출하세요\0"	// IMG_ENUM_WEATHER_SNOW
+enum {
+	ICON_IMG_WEATHER_SERENITY = 0,
+	ICON_IMG_WEATHER_PARTLY_CLOUDY,
+	ICON_IMG_WEATHER_CLOUDY,
+	ICON_IMG_WEATHER_SHOWER,
+	ICON_IMG_WEATHER_RAINNY,
+	ICON_IMG_WEATHER_THUNDERSTORM,
+	ICON_IMG_WEATHER_SNOW,
+	MAX_ICON_IMG_WEATHER,
+};
+
+char g_weather_long_text_tbl[MAX_ICON_IMG_WEATHER][MAX_MENT_BUFF_SIZE] = {
+	"오늘은 날씨가 맑을 예정입니다\0",						// ICON_IMG_WEATHER_SERENITY
+	"오늘은 날씨가 구름이 조금 낄 예정입니다\0",				// ICON_IMG_WEATHER_PARTLY_CLOUDY
+	"오늘은 날씨가 흐릴 예정입니다\0",						// ICON_IMG_WEATHER_CLOUDY
+	"오늘은 소나기가 올 예정이오니 우산을 준비하세요\0",		// ICON_IMG_WEATHER_SHOWER
+	"오늘은 비가 올 예정이오니 우산을 준비하세요\0",			// ICON_IMG_WEATHER_RAINNY
+	"오늘은 뇌우가 칠 예정이오니 우산을 준비하세요\0",		// ICON_IMG_WEATHER_THUNDERSTORM
+	"오늘은 눈이 올 예정이오니 따뜻하게 입고 외출하세요\0"	// ICON_IMG_WEATHER_SNOW
 };
 
 char g_weather_short_text_tbl[7][10] = {
@@ -272,38 +283,38 @@ void view_weather_init(void)
 	// weather icon of left side
 	l_icon_h = ui_create_icon_obj(1, 169, 300, 246);
 	if (l_icon_h) {
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_SERENITY,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_SERENITY,
 			"/app/img/weather/serenity.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_PARTLY_CLOUDY,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_PARTLY_CLOUDY,
 			"/app/img/weather/partly_cloudy.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_CLOUDY,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_CLOUDY,
 			"/app/img/weather/cloudy.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_SHOWER,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_SHOWER,
 			"/app/img/weather/shower.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_RAINNY,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_RAINNY,
 			"/app/img/weather/rainny.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_THUNDERSTORM,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_THUNDERSTORM,
 			"/app/img/weather/thunderstorm.png");
-		ui_load_icon_img(l_icon_h, IMG_ENUM_WEATHER_SNOW,
+		ui_load_icon_img(l_icon_h, ICON_IMG_WEATHER_SNOW,
 			"/app/img/weather/snow.png");
 	}
 
 	// weather icon of right side
 	r_icon_h = ui_create_icon_obj(499, 169, 300, 246);
 	if (r_icon_h) {
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_SERENITY,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_SERENITY,
 			"/app/img/weather/serenity.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_PARTLY_CLOUDY,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_PARTLY_CLOUDY,
 			"/app/img/weather/partly_cloudy.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_CLOUDY,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_CLOUDY,
 			"/app/img/weather/cloudy.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_SHOWER,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_SHOWER,
 			"/app/img/weather/shower.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_RAINNY,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_RAINNY,
 			"/app/img/weather/rainny.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_THUNDERSTORM,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_THUNDERSTORM,
 			"/app/img/weather/thunderstorm.png");
-		ui_load_icon_img(r_icon_h, IMG_ENUM_WEATHER_SNOW,
+		ui_load_icon_img(r_icon_h, ICON_IMG_WEATHER_SNOW,
 			"/app/img/weather/snow.png");
 	}
 
