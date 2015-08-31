@@ -7,7 +7,7 @@
 /******************************************************************************
  * Function Export
  ******************************************************************************/
-extern int init_microwave_controller(u32 _thr);
+extern int init_microwave_controller(u32 _adc);
 extern void mw_set_threshold(u32 _thr);
 
 #endif	//__MICROWAVE_H__

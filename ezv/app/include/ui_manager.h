@@ -54,7 +54,7 @@ enum {
 };
 
 typedef void (*view_handler)(void);
-typedef void (*key_handler)(u32 type, u32 code);
+typedef void (*key_handler)(u16 type, u16 code);
 
 typedef struct {
 	view_handler entry;

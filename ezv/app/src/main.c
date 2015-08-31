@@ -215,13 +215,15 @@ static BOOL app_init()
 	init_msg();
 
 	init_gpio_controller();
+
+	init_key_controller();
 	
 	init_microwave_controller(g_app_status.adc_value);
 	
 	init_watchdog_controller();
 	
 	init_comm();
-
+		
 	gpio_clr(GPIOG, GPIO_AMP);	// AMP OFF
 
 	wdt_set_period(MAX_WATCHDOG_PERIOD);
@@ -238,7 +240,7 @@ static BOOL app_init()
 int main(int arg_gc, char *argv[])
 {
 	mtm_msg_t msg;
-	u16 key_f, key_evt;
+	u16 type, code;
 		
 	app_init();
 
@@ -254,14 +256,17 @@ int main(int arg_gc, char *argv[])
 				break;
 			case MSG_EVENT_MICROWAVE:
 				break;
+			case MSG_EVENT_DOOR:
+				g_app_status.door_opened = msg.param;
+				break;
 			case MSG_DATA_WALLPAD_PKT:
 				ui_draw_view();
 				break;
 			}
 		}
 
-		if (check_key_event(&key_f, &key_evt))
-			ui_operate_key(key_f, key_evt);
+		if (check_key_event(&type, &code))
+			ui_operate_key(type, code);
 
 		wdt_refresh();
 		

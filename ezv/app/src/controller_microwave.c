@@ -157,7 +157,7 @@ void mw_set_threshold(u32 _thr)
 // Function Name  : init_microwave_controller()
 // Description    : 
 //------------------------------------------------------------------------------
-int init_microwave_controller(u32 _thr)
+int init_microwave_controller(u32 _adc)
 {
 	int res = -1;
 	
@@ -174,7 +174,7 @@ int init_microwave_controller(u32 _thr)
 		return -1;
 	}
 
-	mw_set_threshold(_thr);
+	mw_set_threshold(_adc);	
 	
 	return 0;
 }

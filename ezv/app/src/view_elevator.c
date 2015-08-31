@@ -147,9 +147,35 @@ void view_elevator_exit(void)
 // Function Name  : view_elevator_key()
 // Description    :
 //------------------------------------------------------------------------------
-void view_elevator_key(u32 _type, u32 _code)
+void view_elevator_key(u16 _type, u16 _code)
 {
 	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
+
+	if (_type == KEY_TYPE_LONG) {
+		return;
+	}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		ui_switch_to(VIEW_ID_GAS);
+		break;
+	case KEY_RIGHT_MIDDLE:
+		ui_switch_to(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		ui_switch_to(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		ui_switch_to(VIEW_ID_WEATHER);
+		break;
+	case KEY_LEFT_MIDDLE:
+		// comm_req_elevator_call();
+		break;
+	case KEY_LEFT_BOTTOM:
+		ui_switch_to(VIEW_ID_PARKING);
+		break;
+	}
+
 }
 
 //------------------------------------------------------------------------------

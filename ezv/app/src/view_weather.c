@@ -258,9 +258,34 @@ void view_weather_exit(void)
 // Function Name  : view_weather_key()
 // Description    :
 //------------------------------------------------------------------------------
-void view_weather_key(u32 _type, u32 _code)
+void view_weather_key(u16 _type, u16 _code)
 {
 	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
+
+	if (_type == KEY_TYPE_LONG) {
+		return;
+	}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		ui_switch_to(VIEW_ID_GAS);
+		break;
+	case KEY_RIGHT_MIDDLE:
+		ui_switch_to(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		ui_switch_to(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		// comm_req_weather_info();
+		break;
+	case KEY_LEFT_MIDDLE:
+		ui_switch_to(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		ui_switch_to(VIEW_ID_PARKING);
+		break;
+	}
 }
 
 //------------------------------------------------------------------------------
