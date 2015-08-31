@@ -327,13 +327,11 @@ void ui_change_view(u8 _id)
 // Function Name  : ui_view_draw()
 // Description    : 
 //------------------------------------------------------------------------------
-void ui_register_view(u8 _id, view_handler _entry,
-				view_handler _draw, view_handler _exit, key_handler _key)
+void ui_register_view(u8 _id, view_handler _entry, view_handler _draw, view_handler _exit)
 {
 	g_view_handlers[_id].entry = _entry;
 	g_view_handlers[_id].draw = _draw;
 	g_view_handlers[_id].exit = _exit;
-	g_view_handlers[_id].key = _key;
 }
 
 //------------------------------------------------------------------------------
@@ -343,28 +341,5 @@ void ui_register_view(u8 _id, view_handler _entry,
 void ui_draw_view(void)
 {
 	g_view_handlers[g_curr_view].draw();
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : ui_operate_key()
-// Description    : 
-//------------------------------------------------------------------------------
-void ui_operate_key(u32 _type, u32 _code)
-{
-	g_view_handlers[g_curr_view].key(_type, _code);
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : ui_switch_to()
-// Description    : 
-//------------------------------------------------------------------------------
-void ui_switch_to(u8 _id)
-{
-	mtm_msg_t msg;
-	
-	MSG_INIT(msg);
-	msg.msg_id = MSG_EVENT_UI_SWITCH;
-	
-	msg_send(&msg);
 }
 

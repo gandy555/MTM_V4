@@ -36,10 +36,9 @@ static obj_img_t *g_icon_img_h;
 static obj_img_t *g_floor_img_h;
 static obj_icon_t *g_arrow_icon_h;
 
+static u8 g_elev_called = 0;
 static u8 g_elev_status = 0;
 static s8 g_elev_floor = 0;
-static workqueue_list_t *g_elevator_workqueue;
-#define ELEVATOR_WQ_H	g_elevator_workqueue
 /******************************************************************************
  *
  * Public Functions Declaration
@@ -73,6 +72,59 @@ u8 diff_elevator_info(void)
 }
 
 //------------------------------------------------------------------------------
+// Function Name  : view_elevator_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_init(void)
+{
+	obj_img_t *bg_h = g_elev_bg_h;
+	obj_img_t *icon_img_h = g_icon_img_h;
+	obj_img_t *elev_h = g_elev_img_h;	
+	obj_img_t *floor_h = g_floor_img_h;
+	obj_icon_t *arrow_h = g_arrow_icon_h;
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
+
+	// elevator icon img
+	icon_img_h = ui_create_img_obj(58, 50, 158, 158, 
+					"/app/img/icon_elevator.png");
+	
+	// elevator img
+	elev_h = ui_create_img_obj(510, 175, 207, 258,
+				"/app/img/elevator_image.png");
+
+	// floor img
+	floor_h = ui_create_img_obj(339, 240, 143, 127,
+				"/app/img/elevator_display.png");
+	
+	// arrow icon 
+	arrow_h = ui_create_icon_obj(232, 210, 86, 190);
+	if (arrow_h) {
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_BLANK,
+			"/app/img/el_png/arrow_back.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_1,
+			"/app/img/el_png/arrow_up_1.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_2,
+			"/app/img/el_png/arrow_up_2.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_3,
+			"/app/img/el_png/arrow_up_3.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_1,
+			"/app/img/el_png/arrow_down_1.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_2,
+			"/app/img/el_png/arrow_down_2.png");
+		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_3,
+			"/app/img/el_png/arrow_down_3.png");
+	}
+
+	ui_register_view(VIEW_ID_ELEVATOR, view_elevator_entry,
+		view_elevator_draw, view_elevator_exit);
+
+	register_key_handler(VIEW_ID_ELEVATOR, view_elevator_key);
+}
+
+//------------------------------------------------------------------------------
 // Function Name  : view_elevator_entry()
 // Description    :
 //------------------------------------------------------------------------------
@@ -83,6 +135,8 @@ void view_elevator_entry(void)
 	
 	PRINT_FUNC_CO();
 
+	// comm_req_elevator_call();
+	
 	update_elevator_info();
 
 	ui_draw_image(g_elev_bg_h);
@@ -120,13 +174,19 @@ void view_elevator_draw(void)
 
 	switch (g_elev_status) {
 	case MTM_DATA_EV_STATUS_STOP:
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 정지해 있습니다");
 		break;
 	case MTM_DATA_EV_STATUS_UP:
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_UP_1);
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
+		break;
 	case MTM_DATA_EV_STATUS_DOWN:
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_DOWN_1);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
 		break;
 	case MTM_DATA_EV_STATUS_ARRIVE:
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 도착 하였습니다");
 		break;
 	}
@@ -139,8 +199,6 @@ void view_elevator_draw(void)
 void view_elevator_exit(void)
 {
 	PRINT_FUNC_CO();
-
-	workqueue_delete_all(ELEVATOR_WQ_H);
 }
 
 //------------------------------------------------------------------------------
@@ -176,59 +234,5 @@ void view_elevator_key(u16 _type, u16 _code)
 		break;
 	}
 
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_init()
-// Description    :
-//------------------------------------------------------------------------------
-void view_elevator_init(void)
-{
-	obj_img_t *bg_h = g_elev_bg_h;
-	obj_img_t *icon_img_h = g_icon_img_h;
-	obj_img_t *elev_h = g_elev_img_h;	
-	obj_img_t *floor_h = g_floor_img_h;
-	obj_icon_t *arrow_h = g_arrow_icon_h;
-
-	ELEVATOR_WQ_H = workqueue_create("ELEVATOR VIEW");
-	
-	// back ground image
-	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
-				"/app/img/blank_bg.png");
-
-	// elevator icon img
-	icon_img_h = ui_create_img_obj(58, 50, 158, 158, 
-					"/app/img/icon_elevator.png");
-	
-	// elevator img
-	elev_h = ui_create_img_obj(510, 175, 207, 258,
-				"/app/img/elevator_image.png");
-
-	// floor img
-	floor_h = ui_create_img_obj(339, 240, 143, 127,
-				"/app/img/elevator_display.png");
-	
-	// arrow icon 
-	arrow_h = ui_create_icon_obj(232, 210, 86, 190);
-	if (arrow_h) {
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_BLANK,
-			"/app/img/el_png/arrow_back.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_1,
-			"/app/img/el_png/arrow_up_1.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_2,
-			"/app/img/el_png/arrow_up_2.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_UP_3,
-			"/app/img/el_png/arrow_up_3.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_1,
-			"/app/img/el_png/arrow_down_1.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_2,
-			"/app/img/el_png/arrow_down_2.png");
-		ui_load_icon_img(arrow_h, ICON_IMG_ARROW_DOWN_3,
-			"/app/img/el_png/arrow_down_3.png");
-	}
-
-	ui_register_view(VIEW_ID_ELEVATOR,
-		view_elevator_entry, view_elevator_draw,
-		view_elevator_exit, view_elevator_key);
 }
 

@@ -54,13 +54,11 @@ enum {
 };
 
 typedef void (*view_handler)(void);
-typedef void (*key_handler)(u16 type, u16 code);
 
 typedef struct {
 	view_handler entry;
 	view_handler draw;
 	view_handler exit;
-	key_handler key;
 } view_handlers_t;
 
 /******************************************************************************
@@ -81,7 +79,5 @@ extern void ui_draw_rect(int x, int y, int w, int h, u32 co, int fill);
 extern void ui_draw_text(int x, int y, int w, int h, u32 size, u32 co, u32 align, char *str);
 extern void ui_draw_text_window(GR_WINDOW_ID wid, int x, int y, int w, int h,
 			u32 size, u32 co, u32 align, char *str);
-extern void ui_operate_key(u32 _type, u32 _code);
-extern void ui_switch_to(u8 _id);
 #endif	// __VIEW_MNG_H__
 

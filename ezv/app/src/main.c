@@ -27,6 +27,17 @@
 app_status_t g_app_status;
 int g_main_loop = TRUE;
 int g_backlight_on = TRUE;
+static key_handler g_key_handlers[MAX_VIEW_ID];
+static workqueue_list_t g_app_workqueue;
+
+#define APP_WQ_H	&g_app_workqueue
+
+/******************************************************************************
+ *
+ * Functions Declaration
+ *
+ ******************************************************************************/
+void register_key_handler(u8 _id, key_handler _handler);
 
 //------------------------------------------------------------------------------
 // Function Name  : backlight_on()
@@ -234,6 +245,58 @@ static BOOL app_init()
 }
 
 //------------------------------------------------------------------------------
+// Function Name  : proc_key_handler()
+// Description    : 
+//------------------------------------------------------------------------------
+static void proc_key_handler(u32 _type, u32 _code)
+{
+	g_view_handlers[g_curr_view].key(_type, _code);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : register_key_handler()
+// Description    : 
+//------------------------------------------------------------------------------
+void register_key_handler(u8 _id, key_handler _handler)
+{
+	g_key_handlers[_id] = _handler;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : ui_switch_to()
+// Description    : 
+//------------------------------------------------------------------------------
+void ui_switch_to(u8 _id)
+{
+	mtm_msg_t msg;
+	
+	MSG_INIT(msg);
+	msg.msg_id = MSG_EVENT_UI_SWITCH;
+	
+	msg_send(&msg);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : register_workqueue()
+// Description    : 
+//------------------------------------------------------------------------------
+void register_workqueue(u32 _period, work_handler _handler)
+{
+	workqueue_register_delayed(APP_WQ_H, _period,
+		INFINITE, NULL, NULL, _handler);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : unregister_workqueue()
+// Description    : 
+//------------------------------------------------------------------------------
+void unregister_workqueue(work_handler _handler)
+{
+	if (workqueue_check(APP_WQ_H, _handler)) 
+		workqueue_unregister(APP_WQ_H, _handler);
+}
+
+//------------------------------------------------------------------------------
 // Function Name  : main()
 // Description    : 
 //------------------------------------------------------------------------------
@@ -244,7 +307,7 @@ int main(int arg_gc, char *argv[])
 		
 	app_init();
 
-	ui_switch_to(VIEW_ID_WEATHER);
+	ui_change_view(VIEW_ID_WEATHER);
 	
 	DBG_MSG("Starting Main Loop..\r\n");
 	
@@ -266,8 +329,10 @@ int main(int arg_gc, char *argv[])
 		}
 
 		if (check_key_event(&type, &code))
-			ui_operate_key(type, code);
+			proc_key_handler(type, code);
 
+		workqueue_all_proc(APP_WQ_H);
+		
 		wdt_refresh();
 		
 		usleep(1000);

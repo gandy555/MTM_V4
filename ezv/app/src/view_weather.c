@@ -42,6 +42,11 @@ enum {
 	MAX_ICON_IMG_WEATHER,
 };
 
+enum {
+	IMG_GAS_ON = 0,
+	IMG_GAS_OFF
+};
+
 char g_weather_long_text_tbl[MAX_ICON_IMG_WEATHER][MAX_MENT_BUFF_SIZE] = {
 	"오늘은 날씨가 맑을 예정입니다\0",						// ICON_IMG_WEATHER_SERENITY
 	"오늘은 날씨가 구름이 조금 낄 예정입니다\0",				// ICON_IMG_WEATHER_PARTLY_CLOUDY
@@ -226,7 +231,10 @@ void view_weather_draw(void)
 	ui_draw_icon_image(g_r_icon_h, r_weather_idx);
 
 	/* gas status */
-	ui_draw_icon_image(g_gas_icon_h, g_app_status.gas_stat);
+	if (g_app_status.gas_stat)
+		ui_draw_icon_image(g_gas_icon_h, IMG_GAS_ON);
+	else
+		ui_draw_icon_image(g_gas_icon_h, IMG_GAS_OFF);
 	
 	/* parking information */
 	ui_draw_image(g_park_bg_h);
@@ -346,9 +354,9 @@ void view_weather_init(void)
 	// gas icon(on/off)
 	gas_icon_h = ui_create_icon_obj(325, 245, 137, 137);	
 	if (gas_icon_h) {
-		ui_load_icon_img(gas_icon_h, IMG_ENUM_GAS_ON,
+		ui_load_icon_img(gas_icon_h, IMG_GAS_ON,
 			"/app/img/main_icon/main_gas_on.png");		//적색 가스사용
-		ui_load_icon_img(gas_icon_h, IMG_ENUM_GAS_OFF,
+		ui_load_icon_img(gas_icon_h, IMG_GAS_OFF,
 			"/app/img/main_icon/main_gas_off.png");		//녹색 가스차단
 	}
 
@@ -366,8 +374,9 @@ void view_weather_init(void)
 			MENT_AREA_HEIGHT, NULL);
 	}
 
-	ui_register_view(VIEW_ID_WEATHER,
-		view_weather_entry, view_weather_draw,
-		view_weather_exit, view_weather_key);
+	ui_register_view(VIEW_ID_WEATHER, view_weather_entry,
+		view_weather_draw, 	view_weather_exit);
+	
+	register_key_handler(VIEW_ID_WEATHER, view_weather_key);
 }
 
