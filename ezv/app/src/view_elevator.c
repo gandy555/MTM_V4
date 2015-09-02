@@ -149,6 +149,37 @@ void view_elevator_entry(void)
 	
 	ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터 상태 확인중 입니다");
 	//ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터를 호출하였습니다");
+	register_workqueue(500, view_elevator_animation_arrow);
+}
+
+#define ARROW_DOWN_OFFSET	ICON_IMG_ARROW_UP_3
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_animation_arrow()
+// Description    :
+//------------------------------------------------------------------------------
+static void view_elevator_animation_arrow(u32 _param)
+{
+	static u8 arrow_pos = 1;
+
+	switch (g_elev_status) {
+	case MTM_DATA_EV_STATUS_STOP:
+		arrow_pos = 0;
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
+		break;
+	case MTM_DATA_EV_STATUS_UP:
+		ui_draw_icon_image(g_arrow_icon_h, arrow_pos);
+		break;
+	case MTM_DATA_EV_STATUS_DOWN:
+		ui_draw_icon_image(g_arrow_icon_h, ARROW_DOWN_OFFSET + arrow_pos);
+		break;
+	case MTM_DATA_EV_STATUS_ARRIVE:
+		arrow_pos = 0;
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
+		break;
+	}
+	
+	if (++arrow_pos > 3)
+		arrow_pos = 1;
 }
 
 //------------------------------------------------------------------------------
@@ -174,19 +205,15 @@ void view_elevator_draw(void)
 
 	switch (g_elev_status) {
 	case MTM_DATA_EV_STATUS_STOP:
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 정지해 있습니다");
 		break;
 	case MTM_DATA_EV_STATUS_UP:
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_UP_1);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
 		break;
 	case MTM_DATA_EV_STATUS_DOWN:
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_DOWN_1);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
 		break;
 	case MTM_DATA_EV_STATUS_ARRIVE:
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
 		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 도착 하였습니다");
 		break;
 	}
@@ -199,6 +226,7 @@ void view_elevator_draw(void)
 void view_elevator_exit(void)
 {
 	PRINT_FUNC_CO();
+	unregister_workqueue(view_elevator_animation_arrow);
 }
 
 //------------------------------------------------------------------------------

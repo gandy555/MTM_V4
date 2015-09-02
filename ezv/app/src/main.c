@@ -28,9 +28,9 @@ app_status_t g_app_status;
 int g_main_loop = TRUE;
 int g_backlight_on = TRUE;
 static key_handler g_key_handlers[MAX_VIEW_ID];
-static workqueue_list_t g_app_workqueue;
+static workqueue_list_t *g_app_workqueue;
 
-#define APP_WQ_H	&g_app_workqueue
+#define APP_WQ_H	g_app_workqueue
 
 /******************************************************************************
  *
@@ -307,6 +307,8 @@ int main(int arg_gc, char *argv[])
 		
 	app_init();
 
+	APP_WQ_H = workqueue_create("MAIN APP");
+	
 	ui_change_view(VIEW_ID_WEATHER);
 	
 	DBG_MSG("Starting Main Loop..\r\n");
