@@ -396,18 +396,21 @@ void workqueue_reset_time(workqueue_node_t *_node)
 // Function Name  : workqueue_head_proc()
 // Description    : proccessing sequential work queue
 //------------------------------------------------------------------------------
-void workqueue_head_proc(workqueue_list_t *_list_h)
+int workqueue_head_proc(workqueue_list_t *_list_h)
 {
-	workqueue_node_t* node = _list_h->head;
+	workqueue_node_t* node = NULL;
 	SYSTIM curr_time;
 	int diff;
 
+	HANDLE_ASSERT(_list_h);
+
+	node = _list_h->head;
 	if (node == NULL)
-		return;
+		return 0;
 
 	get_tim(&curr_time);	
 	if ((curr_time.ltime - _list_h->p_time.ltime) == 0) 
-		return;
+		return 0;
 	
 	diff = curr_time.ltime - _list_h->p_time.ltime;
 	node->curr.c_time += diff;
@@ -416,28 +419,32 @@ void workqueue_head_proc(workqueue_list_t *_list_h)
 			workqueue_delete_node(_list_h, node);
 	}
 	_list_h->p_time = curr_time;
+
+	return 1;
 }
 
 //------------------------------------------------------------------------------
 // Function Name  : workqueue_all_proc()
 // Description    : proccessing all of work queue
 //------------------------------------------------------------------------------
-void workqueue_all_proc(workqueue_list_t *_list_h)
+int workqueue_all_proc(workqueue_list_t *_list_h)
 {
 	workqueue_node_t *node, *n_node = NULL;
 	SYSTIM curr_time;
 	int diff, need_delete;
 
+	HANDLE_ASSERT(_list_h);
+	
 	node = _list_h->head;
 	if (node == NULL)
-		return;
+		return 0;
 
 	get_tim(&curr_time);
 	if ((_list_h->p_time.utime == 0) && (_list_h->p_time.ltime == 0))
 		_list_h->p_time = curr_time;
 	
 	if ((curr_time.ltime - _list_h->p_time.ltime) == 0) 
-		return;
+		return 0;
 	
 	diff = curr_time.ltime - _list_h->p_time.ltime;
 	while (node != NULL) {
@@ -451,6 +458,8 @@ void workqueue_all_proc(workqueue_list_t *_list_h)
 		node = n_node;
 	}
 	_list_h->p_time = curr_time;
+
+	return 1;
 }
 
 //------------------------------------------------------------------------------
@@ -466,7 +475,7 @@ workqueue_list_t *workqueue_create(char *_name)
 		return NULL;
 	}
 	
-	new_h = malloc(sizeof(workqueue_list_t));	
+	new_h = tw_MemAlloc(sizeof(workqueue_list_t));	
 	if (new_h != NULL) {
 		memset(new_h, 0, sizeof(workqueue_list_t));
 		if (_name != NULL)
@@ -483,15 +492,16 @@ workqueue_list_t *workqueue_create(char *_name)
 // Function Name  : workqueue_destroy()
 // Description    : destroy the workqueue handle 
 //------------------------------------------------------------------------------
-u8 workqueue_destroy(workqueue_list_t *_handle)
+u8 workqueue_destroy(workqueue_list_t **_handle)
 {	
 	u8 res = 0;
+	workqueue_list_t *h = *_handle;
 	
-	if (_handle != NULL) {
-		WORKQUEUE_DBG("<%s> %s", __func__, _handle->name);				
-		workqueue_delete_all(_handle);
-		free(_handle);
-		_handle = NULL;
+	if (h != NULL) {
+		WORKQUEUE_DBG("<%s> %s", __func__, h->name);				
+		workqueue_delete_all(h);
+		free(h);
+		*_handle = NULL;
 		res = 1;
 	}
 

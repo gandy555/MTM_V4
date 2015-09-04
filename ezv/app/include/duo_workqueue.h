@@ -51,8 +51,8 @@ extern u8 workqueue_list_dump(workqueue_list_t *_list_h);
 extern u8 workqueue_delete_all(workqueue_list_t *_list_h);
 extern void workqueue_refresh_time(workqueue_node_t *_node);
 extern void workqueue_reset_time(workqueue_node_t *_node);
-extern void workqueue_head_proc(workqueue_list_t *_list_h);
-extern void workqueue_all_proc(workqueue_list_t *_list_h);
+extern int workqueue_head_proc(workqueue_list_t *_list_h);
+extern int workqueue_all_proc(workqueue_list_t *_list_h);
 extern u8 workqueue_register(
 	workqueue_list_t *_list_h, workqueue_info_t *_wq_info);
 extern u8 workqueue_register_delayed(workqueue_list_t *_list_h, u32 _period,
@@ -68,6 +68,6 @@ extern u32 workqueue_param(
 extern u8 workqueue_register_default(workqueue_list_t *_list_h, 
 	u32 _param, work_handler _work_func);
 extern workqueue_list_t *workqueue_create(char *_name);
-extern u8 workqueue_destroy(workqueue_list_t *_handle);
+extern u8 workqueue_destroy(workqueue_list_t **_handle);
 #endif // __TW_WORKQUEUE_H__
 
