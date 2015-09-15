@@ -1,286 +1,196 @@
-/*
-*/
-#include "common.h"
-#include "context_gas.h"
+/******************************************************************************
+ * Filename:
+ *   view_gas.c
+ *
+ * Description:
+ *   The display related gas information 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-09-15
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
 #include "main.h"
 
-//
-// Construction/Destruction
-//
-CContextGas::CContextGas(GR_WINDOW_ID wid, GR_GC_ID gc)
-	: CContext(wid, gc)
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+enum {
+	ICON_IMG_GAS_ON = 0,
+	ICON_IMG_GAS_OFF
+};
+
+enum {
+	ICON_IMG_GAS_SW_ON = 0,
+	ICON_IMG_GAS_SW_OFF
+};
+
+static u8 g_gas_status = 0;
+
+static obj_img_t *g_gas_bg_h;
+static obj_icon_t *g_gas_icon_h;
+static obj_icon_t *g_gas_sw_icon_h;
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+void view_gas_init(void);
+
+//------------------------------------------------------------------------------
+// Function Name  : update_gas_info()
+// Description    :
+//------------------------------------------------------------------------------
+void update_gas_info(void)
 {
-	m_isWallPadStatus = FALSE;
-	m_isGasOff = FALSE;
+	g_gas_status = g_app_status.gas_stat;
 }
 
-CContextGas::~CContextGas()
+//------------------------------------------------------------------------------
+// Function Name  : diff_gas_info()
+// Description    :
+//------------------------------------------------------------------------------
+u8 diff_gas_info(void)
 {
-}
-
-//
-// Member Function
-//
-void CContextGas::Init()
-{
-	CObject* pObject;
-	CObjectIcon* pObjectIcon;
-	UINT id;
-
-	CContext::Init();
-
-	// Blank 배경 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 0, 0, g_scr_info.cols, g_scr_info.rows);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/blank_bg.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 아이콘 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 58, 50, 158, 158);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_ICON_COUNT);
-		pObject->LoadImage(IMG_ENUM_ICON_ON,	"/app/img/icon_gas_on.png");
-		pObject->LoadImage(IMG_ENUM_ICON_OFF,	"/app/img/icon_gas_off.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 스위치 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 312, 287, 299, 116);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_SWITCH_COUNT);
-		pObject->LoadImage(IMG_ENUM_SWITCH_ON,	"/app/img/icon_switch_on.png");		//녹색 ON  차단중
-		pObject->LoadImage(IMG_ENUM_SWITCH_OFF,	"/app/img/icon_switch_off.png");	//적색 OFF 사용중
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	m_isGasOff = (g_app_status.gas_stat) ? FALSE : TRUE;	//반대
-}
-
-void CContextGas::DeInit()
-{
-	CContext::DeInit();
+	if (g_gas_status != g_app_status.gas_stat)
+		return 1;
 	
-	m_ObjectList.RemoveAll();
+	return 0;
 }
 
-void CContextGas::Draw(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_gas_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_gas_key(u16 _type, u16 _code)
 {
-	CObjectIcon* pObjectIcon;
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
 
-	if(m_gc==0) return;
-
-	DBGMSGC(DBG_GAS, "++ [%d]\r\n", nContextNum);
-
-	//배경
-	m_ObjectList.Draw(GAS_OBJ_BG);
-
-	//아이콘
-	pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(GAS_OBJ_ICON);
-	if(pObjectIcon)
-	{
-	//	pObjectIcon->Draw(m_isGasOff ? IMG_ENUM_ICON_ON : IMG_ENUM_ICON_OFF);
-		pObjectIcon->Draw(g_app_status.gas_stat ? IMG_ENUM_ICON_ON : IMG_ENUM_ICON_OFF);	//ICON_ON=사용중, ICON_OFF=차단
+	if (_type == KEY_TYPE_LONG) {
+		return;
 	}
-
-	//텍스트
-	vm_draw_text(144, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE, "가스사용");
-	vm_draw_text(625, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "가스차단");
-
-	switch(nContextNum)
-	{
-	case 0:
-		//텍스트
-		vm_draw_text(240, 108, 500, 40, 32, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "월패드 상태요청중..");
-
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(GAS_OBJ_SWITCH);
-		if (pObjectIcon)
-			pObjectIcon->Draw(g_app_status.gas_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);	//ON=차단, OFF=사용중
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_req_gas_status();
 		break;
-	case 1:
-	case 2:
-		//텍스트
-	//	if(m_isGasOff)
-		if(g_app_status.gas_stat) {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "가스를 차단하였습니다");
-		} else {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "가스를 사용중입니다");
-		}
+	case KEY_RIGHT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		hcm_switch_ui(VIEW_ID_WEATHER);
+		break;
+	case KEY_LEFT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_PARKING);
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_gas_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_gas_entry(void)
+{
+	PRINT_FUNC_CO();
+
+	hcm_req_gas_status();
+
+	update_gas_info();
+
+	ui_draw_image(g_gas_bg_h);
+
+	if (g_gas_status) {
+		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_OFF);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 차단하였습니다");
+	} else {
+		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_ON);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 사용중입니다");
+	}
 		
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(GAS_OBJ_SWITCH);
-		if(pObjectIcon)
-		{
-		//	pObjectIcon->Draw(m_isGasOff ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);
-			pObjectIcon->Draw(g_app_status.gas_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);
-		}		
-		break;
-	case 3:
-		vm_draw_text(240, 108, 500, 40, 32, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "월패드 응답대기중..");
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(GAS_OBJ_SWITCH);
-		if (pObjectIcon)
-			pObjectIcon->Draw(g_app_status.gas_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);	//ON=차단, OFF=사용중
-		break;
-	}
-
-	DBGMSGC(DBG_GAS, "--\r\n");
+	ui_draw_text(144, 329, 150, 32, 24, WHITE, TXT_ALIGN_RIGHT, "가스사용");
+	ui_draw_text(625, 329, 150, 32, 24, WHITE, TXT_ALIGN_LEFT, "가스차단");
 }
 
-void CContextGas::Proc(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_gas_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_gas_draw(void)
 {
-	char szWaveFile[2][14] = { "gas_on\0", "gas_off\0" };	//gas_off="가스밸브가 차단되었습니다", gas_on="가스밸브가 개방설정 되었습니다"
-	char szWaveFilePath[128] = {0,};
+	if (diff_gas_info() == 0)
+		return;
+	
+	update_gas_info();
 
-	DBGMSGC(DBG_GAS, "++ [%d]\r\n", nContextNum);
-
-	switch(nContextNum)
-	{
-	case 0:
-	//	g_wallpad_sns.RequestReserve(SNS_CMD_WALLPAD_STAT_REQ);
-		if (g_pWallPad) {
-			m_isWallPadStatus = TRUE;
-			g_pWallPad->RequestGasStatus();
-		}
-		break;
-	case 1:
-	case 2:
-	//	sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[m_isGasOff]);
-		sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[g_app_status.gas_stat]);
-		play_wav_file(szWaveFilePath);
-		break;
-	}
-
-	DBGMSGC(DBG_GAS, "--\r\n");
-}
-
-void CContextGas::TimerProc(UINT idTimer)
-{
-	switch(idTimer)
-	{
-	case RESPONSE_TIMER:
-		if(g_pWallPad)
-		{
-			g_pWallPad->RequestGasCut();	//가스차단요청
-		}
-		break;
+	if (g_gas_status) {
+		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_ON);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 차단하였습니다");
+		// play_wave("/app/sound/gas_off.wav\0");
+	} else {
+		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_OFF);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 사용중입니다");
+		// play_wave("/app/sound/gas_on.wav\0");
 	}
 }
 
-void CContextGas::RecvProc(UCHAR *pPacket)
+//------------------------------------------------------------------------------
+// Function Name  : view_gas_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_gas_exit(void)
 {
-	PMTM_HEADER pHdr = (PMTM_HEADER)pPacket;
-
-	if(pPacket==NULL) return;
-
-	DBGMSGC(DBG_GAS, "++\r\n");
-
-	switch(pHdr->type)
-	{
-	case MTM_DATA_TYPE_WEATHER:
-		break;
-	case MTM_DATA_TYPE_PARKING:
-		break;
-	case MTM_DATA_TYPE_ELEVATOR:
-		break;
-	case MTM_DATA_TYPE_GAS:
-		if (g_isBackLightOn) {
-			if (m_isWallPadStatus)
-				ChangeContext(1);
-			else
-				ChangeContext(2);
-		}
-		m_isWallPadStatus = FALSE;
-		break;
-	case MTM_DATA_TYPE_LIGHT:
-		break;
-	case MTM_DATA_TYPE_SECURITY:
-		break;
-	}
-
-	DBGMSGC(DBG_GAS, "--\r\n");
+	PRINT_FUNC_CO();
 }
 
-void CContextGas::ButtonDown(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_GAS, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_DOWN)
-	{
-	}
-	else if(usEventEnum == MTM_GPIO_BUTTON_LONG)
-	{
-#if 0	
-		if( CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_FRONT_RIGHT_TOP)|BIT_FLAG(GPIO_FRONT_RIGHT_BOTTOM)) ||
-			CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_REAR_VOL_UP)|BIT_FLAG(GPIO_REAR_VOL_DOWN)) )
-		{
-			g_state.ChangeState(STATE_SETUP);
-		}
-#endif		
-	}
-
-	DBGMSGC(DBG_GAS, "--\r\n");
-}
-
-void CContextGas::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_GAS, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_UP)
-	{
-		switch(usGpioFlag)
-		{
-		case GPIO_FLAG_FRONT_LEFT_TOP:		//Weather
-			g_state.ChangeState(STATE_WEATHER);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_MIDDLE:	//Elevator
-			g_state.ChangeState(STATE_ELEVATOR);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_BOTTOM:	//Parking
-			g_state.ChangeState(STATE_PARKING);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_TOP:		//Gas
-			if(g_pWallPad)
-			{
-				g_pWallPad->RequestGasCut();
-				ChangeContext(3);
-			#if 0
-				if(g_app_status.wallpad_type == WALLPAD_TYPE_HDT)
-				{
-					//	제어가 이루어 졌다고 판단하고 상태전환
-					g_app_status.gas_stat = (g_app_status.gas_stat==1) ? 0 : 1;
-
-					// 화면갱신
-					ChangeContext(1);
-				}
-			#endif
-			}
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_MIDDLE:	//Light
-			g_state.ChangeState(STATE_LIGHT);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_BOTTOM:	//Security
-			g_state.ChangeState(STATE_SECURITY);
-			break;
-
-		}
+//------------------------------------------------------------------------------
+// Function Name  : view_gas_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_gas_init(void)
+{	
+	obj_img_t *bg_h = g_gas_bg_h;
+	obj_icon_t *gas_icon_h = g_gas_icon_h;
+	obj_icon_t *sw_icon_h = g_gas_sw_icon_h;
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
+	// gas icon 
+	gas_icon_h = ui_create_icon_obj(58, 50, 158, 158);
+	if (gas_icon_h) {
+		ui_load_icon_img(gas_icon_h, ICON_IMG_GAS_ON,
+			"/app/img/icon_gas_on.png");
+		ui_load_icon_img(gas_icon_h, ICON_IMG_GAS_OFF,
+			"/app/img/icon_gas_off.png");
 	}
 
-	DBGMSGC(DBG_GAS, "--\r\n");
+	// switch icon 
+	sw_icon_h = ui_create_icon_obj(312, 287, 299, 116);
+	if (sw_icon_h) {
+		ui_load_icon_img(sw_icon_h, ICON_IMG_GAS_SW_ON,
+			"/app/img/icon_switch_on.png");
+		ui_load_icon_img(sw_icon_h, ICON_IMG_GAS_SW_OFF,
+			"/app/img/icon_switch_off.png");
+	}
+
+	ui_register_view(VIEW_ID_GAS, view_gas_entry,
+		view_gas_draw, view_gas_exit);
+
+	hcm_register_key_handler(VIEW_ID_GAS, view_gas_key);
 }
 

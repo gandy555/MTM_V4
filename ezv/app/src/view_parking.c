@@ -1,261 +1,211 @@
-/*
-*/
-#include "common.h"
-#include "context_parking.h"
+/******************************************************************************
+ * Filename:
+ *   view_parking.c
+ *
+ * Description:
+ *   The display related parking information 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-09-15
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
 #include "main.h"
 
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+static parking_info_t g_parking_info;
 
-//
-// Global Varialble
-//
+static obj_img_t *g_parking_bg_h;
+static obj_img_t *g_parking_img_h;
+static obj_img_t *g_map_img_h;
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+void view_parking_init(void);
 
-
-//
-// Construction/Destruction
-//
-CContextParking::CContextParking(GR_WINDOW_ID wid, GR_GC_ID gc)
-	: CContext(wid, gc)
+//------------------------------------------------------------------------------
+// Function Name  : diff_parking_info()
+// Description    :
+//------------------------------------------------------------------------------
+u8 diff_parking_info(void)
 {
-	int i;
+	if (g_parking_info.status != g_app_status.park_status)
+		return 1;
 
-	m_isSearching = FALSE;
-
-	m_isParkingInfoRequest = FALSE;
-//	m_isParkingInfo = FALSE;
-
-/*
-	for(i=0; i<MAX_PARKING_HISTORY; i++)
-	{
-		g_ParkingHistory[i].status = parking_info_t_STATUS_NOINFO;
-	}
-*/
-}
-
-CContextParking::~CContextParking()
-{
-}
-
-//
-// Member Function
-//
-void CContextParking::Init()
-{
-	CObject* pObject;
-	CObjectIcon* pObjectIcon;
-	UINT id;
-
-	CContext::Init();
-
-	// Blank 배경 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 0, 0, g_scr_info.cols, g_scr_info.rows);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/blank_bg.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 아이콘 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 58, 50, 158, 158);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/icon_parking.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 주차 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 245, 195, 511, 257);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/parking_image1.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-}
-
-void CContextParking::DeInit()
-{
-	CContext::DeInit();
+	if (memcmp(g_parking_info.floor, g_app_status.park_floor, MAX_PARKING_FLOOR_NAME))
+		return 1;
 	
-	m_ObjectList.RemoveAll();
+	if (memcmp(g_parking_info.zone, g_app_status.park_zone, MAX_PARKING_ZONE_NAME))
+		return 1;
+	
+	if (memcmp(g_parking_info.car_num, g_app_status.park_id, MAX_PARKING_CAR_NUM))
+		return 1;
+	
+	return 0;
 }
 
-void CContextParking::Draw(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_parking_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_parking_key(u16 _type, u16 _code)
+{
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
+
+	if (_type == KEY_TYPE_LONG) {
+		return;
+	}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_switch_ui(VIEW_ID_GAS);
+		break;
+	case KEY_RIGHT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		hcm_switch_ui(VIEW_ID_WEATHER);
+		break;
+	case KEY_LEFT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_req_parking_info();
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_parking_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_parking_entry(void)
 {
 	parking_info_t parking_info;
-	char szText[64] = {0,};
-	int i, line_feed = 0;
+	char temp_str[64] = {0,};
+	rect_t rect;
+	int i;
+	
+	PRINT_FUNC_CO();
 
-	if(m_gc==0) return;
+	hcm_req_parking_info();
 
-	DBGMSGC(DBG_PARKING, "++ [%d]\r\n", nContextNum);
-
-	//배경
-	m_ObjectList.Draw(PARKING_OBJ_BG);
-
-	//아이콘
-	m_ObjectList.Draw(PARKING_OBJ_ICON);
-
-	//주차 이미지
-	m_ObjectList.Draw(PARKING_OBJ_IMAGE);
-
-	parking_list_get_item(0, &parking_info);
-	if (parking_info.status == PARKING_STATUS_IN) {
-		sprintf(szText, "[%s]층 [%s]에 주차 되었습니다", parking_info.floor, parking_info.zone);
-		vm_draw_text(245, 89, 500, 32, 24, 	WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, szText);
+	ui_draw_image(g_parking_bg_h);
+	ui_draw_image(g_parking_img_h);
+	ui_draw_image(g_map_img_h);
+	
+	if (g_parking_info.status == PARKING_STATUS_IN) {
+		sprintf(temp_str, "[%s]층 [%s]에 주차 되었습니다",
+			g_parking_info.floor, g_parking_info.zone);
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
 	} else {
-		vm_draw_text(245, 89, 500, 32, 24, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "주차위치를 확인할 수 없습니다");
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT,
+			"주차위치를 확인할 수 없습니다");
 	}
 
-//	37,251 - 209,450 : w=172, h=200
-	RedrawImage(g_wid, g_gc, 37, 251, 172, 200, 37, 251, 172, 200, PARKING_OBJ_BG);
+	rect.x = 37;
+	rect.y = 251;
+	rect.w = 172;
+	rect.h = 200;
+	ui_draw_image_part(g_parking_bg_h, &rect, &rect);
 
-	for (i = 1; i < MAX_PARKING_LIST; i++) {
+	for (i = 0; i < MAX_PARKING_LIST; i++) {
 		parking_list_get_item(i, &parking_info);
 		if (parking_info.status != PARKING_STATUS_IN)
 			break;
-
-		memset(szText, 0, 64);
-		sprintf(szText, "%s %s", parking_info.floor, parking_info.zone);
-		vm_draw_text(37, 251+line_feed*36, 172, 32, 24, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, szText);
-		line_feed++;
+		memset(temp_str, 0, sizeof(temp_str));
+		sprintf(temp_str, "%s -%s", parking_info.floor, parking_info.zone);
+		ui_draw_text(37, 251+(36*i), 172, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
 	}
-
-	DBGMSGC(DBG_PARKING, "--\r\n");
 }
 
-void CContextParking::Proc(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_parking_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_parking_draw(void)
 {
-	DBGMSGC(DBG_PARKING, "++ [%d]\r\n", nContextNum);
-
-	switch(nContextNum)
-	{
-	case 0:
-		if (g_pWallPad) {
-			g_pWallPad->RequestParkingInfo();
-		}
-		play_wav_file("/app/sound/parking_short.wav\0");
-		break;
-	case 1:
-		break;
+	parking_info_t parking_info;
+	char temp_str[64] = {0,};
+	rect_t rect;
+	int i;
+	
+	if (diff_parking_info() == 0)
+		return;
+	
+	ui_draw_image(g_parking_bg_h);
+	ui_draw_image(g_parking_img_h);
+	ui_draw_image(g_map_img_h);
+	
+	if (g_parking_info.status == PARKING_STATUS_IN) {
+		sprintf(temp_str, "[%s]층 [%s]에 주차 되었습니다",
+			g_parking_info.floor, g_parking_info.zone);
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
+	} else {
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT,
+			"주차위치를 확인할 수 없습니다");
 	}
 
-	DBGMSGC(DBG_PARKING, "--\r\n");
+	rect.x = 37;
+	rect.y = 251;
+	rect.w = 172;
+	rect.h = 200;
+	ui_draw_image_part(g_parking_bg_h, &rect, &rect);
+
+	for (i = 0; i < MAX_PARKING_LIST; i++) {
+		parking_list_get_item(i, &parking_info);
+		if (parking_info.status != PARKING_STATUS_IN)
+			break;
+		memset(temp_str, 0, sizeof(temp_str));
+		sprintf(temp_str, "%s -%s", parking_info.floor, parking_info.zone);
+		ui_draw_text(37, 251+(36*i), 172, 32, 24, WHITE, TXT_ALIGN_LEFT, temp_str);
+	}
 }
 
-void CContextParking::TimerProc(UINT idTimer)
+//------------------------------------------------------------------------------
+// Function Name  : view_parking_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_parking_exit(void)
 {
-	switch(idTimer)
-	{
-	case RESPONSE_TIMER:
-		if (g_pWallPad) {
-			g_pWallPad->RequestParkingInfo();
-		}
-		break;
-	case RETRY_TIMEOUT:
-	//	ChangeContext(1);
-		break;
-	}
+	PRINT_FUNC_CO();
 }
 
-void CContextParking::RecvProc(UCHAR *pPacket)
-{
-	PMTM_HEADER pHdr = (PMTM_HEADER)pPacket;
-	parking_info_t * pParkingInfo;
+//------------------------------------------------------------------------------
+// Function Name  : view_parking_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_parking_init(void)
+{	
+	obj_img_t *bg_h = g_parking_bg_h;
+	obj_img_t *park_img_h = g_parking_img_h;
+	obj_img_t *map_img_h = g_map_img_h;
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
+	// parking icon 
+	park_img_h = ui_create_img_obj(58, 50, 158, 158,
+					"/app/img/icon_parking.png");
 
-	int i, index;
+	// map image
+	map_img_h = ui_create_img_obj(245, 195, 511, 257,
+					"/app/img/parking_image1.png");
 
-	if(pPacket==NULL) return;
+	ui_register_view(VIEW_ID_PARKING, view_parking_entry,
+		view_parking_draw, view_parking_exit);
 
-	DBGMSGC(DBG_PARKING, "++\r\n");
-
-	switch(pHdr->type)
-	{
-	case MTM_DATA_TYPE_ACK:
-		break;
-	case MTM_DATA_TYPE_WEATHER:
-		break;
-	case MTM_DATA_TYPE_PARKING:
-		if (g_isBackLightOn) {
-			pParkingInfo = (parking_info_t *)&pPacket[sizeof(MTM_HEADER)];
-			ChangeContext(1);
-		}
-		break;
-	case MTM_DATA_TYPE_ELEVATOR:
-		break;
-	case MTM_DATA_TYPE_GAS:
-		break;
-	case MTM_DATA_TYPE_LIGHT:
-		break;
-	case MTM_DATA_TYPE_SECURITY:
-		break;
-	}
-
-	DBGMSGC(DBG_PARKING, "--\r\n");
+	hcm_register_key_handler(VIEW_ID_PARKING, view_parking_key);
 }
 
-void CContextParking::ThreadProc()
-{
-}
-
-void CContextParking::ButtonDown(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_PARKING, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_DOWN)
-	{
-	}
-	else if(usEventEnum == MTM_GPIO_BUTTON_LONG)
-	{
-#if 0	
-		if( CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_FRONT_RIGHT_TOP)|BIT_FLAG(GPIO_FRONT_RIGHT_BOTTOM)) ||
-			CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_REAR_VOL_UP)|BIT_FLAG(GPIO_REAR_VOL_DOWN)) )
-		{
-			g_state.ChangeState(STATE_SETUP);
-		}
-#endif		
-	}
-
-	DBGMSGC(DBG_PARKING, "--\r\n");
-}
-
-void CContextParking::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_PARKING, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_UP)
-	{
-		switch(usGpioFlag)
-		{
-		case GPIO_FLAG_FRONT_LEFT_TOP:		//Weather
-			g_state.ChangeState(STATE_WEATHER);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_MIDDLE:	//Elevator
-			g_state.ChangeState(STATE_ELEVATOR);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_BOTTOM:	//Parking
-		//	if(g_pWallPad)
-		//	{
-		//		g_pWallPad->RequestParkingInfo();
-		//	}
-			ChangeContext(0);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_TOP:		//Gas
-			g_state.ChangeState(STATE_GAS);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_MIDDLE:	//Light
-			g_state.ChangeState(STATE_LIGHT);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_BOTTOM:	//Security
-			g_state.ChangeState(STATE_SECURITY);
-			break;
-		}
-	}
-
-	DBGMSGC(DBG_PARKING, "--\r\n");
-}

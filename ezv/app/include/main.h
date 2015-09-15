@@ -24,9 +24,16 @@ typedef void (*key_handler)(u16 type, u16 code);
 /******************************************************************************
  * Function Export
  ******************************************************************************/
-extern void register_key_handler(u8 _id, key_handler _handler);
-extern void register_workqueue(u32 _period, work_handler _handler);
-extern void unregister_workqueue(work_handler _handler);
-extern void ui_switch_to(u8 _id);
+extern void hcm_register_key_handler(u8 _id, key_handler _handler);
+extern void hcm_register_workqueue(u32 _period, work_handler _handler);
+extern void hcm_unregister_workqueue(work_handler _handler);
+extern void hcm_switch_ui(u8 _id);
+extern void hcm_req_drawing(void);
+extern void hcm_req_light_control(void);
+extern void hcm_req_elevator_call(void);
+extern void hcm_req_gas_status(void);
+extern void hcm_req_weather_info(void);
+extern void hcm_req_parking_info(void);
+extern void hcm_req_security_info(void);
 #endif //__MAIN_H__
 

@@ -71,6 +71,142 @@ u8 diff_elevator_info(void)
 	return 0;
 }
 
+#define ARROW_DOWN_OFFSET	ICON_IMG_ARROW_UP_3
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_animation_arrow()
+// Description    :
+//------------------------------------------------------------------------------
+static void view_elevator_animation_arrow(u32 _param)
+{
+	static u8 arrow_pos = 1;
+
+	switch (g_elev_status) {
+	case MTM_DATA_EV_STATUS_STOP:
+		arrow_pos = 0;
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
+		break;
+	case MTM_DATA_EV_STATUS_UP:
+		ui_draw_icon_image(g_arrow_icon_h, arrow_pos);
+		break;
+	case MTM_DATA_EV_STATUS_DOWN:
+		ui_draw_icon_image(g_arrow_icon_h, ARROW_DOWN_OFFSET + arrow_pos);
+		break;
+	case MTM_DATA_EV_STATUS_ARRIVE:
+		arrow_pos = 0;
+		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
+		break;
+	}
+	
+	if (++arrow_pos > 3)
+		arrow_pos = 1;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_key(u16 _type, u16 _code)
+{
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
+
+	if (_type == KEY_TYPE_LONG) {
+		return;
+	}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_switch_ui(VIEW_ID_GAS);
+		break;
+	case KEY_RIGHT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		hcm_switch_ui(VIEW_ID_WEATHER);
+		break;
+	case KEY_LEFT_MIDDLE:
+		hcm_req_elevator_call();
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_PARKING);
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_entry(void)
+{
+	PRINT_FUNC_CO();
+
+	hcm_req_elevator_call();
+	
+	update_elevator_info();
+
+	ui_draw_image(g_elev_bg_h);
+
+	ui_draw_image(g_icon_img_h);
+
+	ui_draw_image(g_elev_img_h);
+
+	ui_draw_image(g_floor_img_h);
+	
+	ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터 상태 확인중 입니다");
+	//ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터를 호출하였습니다");
+	
+	hcm_register_workqueue(500, view_elevator_animation_arrow);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_draw(void)
+{
+	rect_t rect;
+	
+	if (diff_elevator_info() == 0)
+		return;
+	
+	update_elevator_info();
+
+	rect.x = 245;
+	rect.y = 89;
+	rect.w = 500;
+	rect.h = 32;
+	ui_draw_image_part(g_elev_bg_h, &rect, &rect);
+
+	switch (g_elev_status) {
+	case MTM_DATA_EV_STATUS_STOP:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 정지해 있습니다");
+		break;
+	case MTM_DATA_EV_STATUS_UP:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
+		break;
+	case MTM_DATA_EV_STATUS_DOWN:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
+		break;
+	case MTM_DATA_EV_STATUS_ARRIVE:
+		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 도착 하였습니다");
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_elevator_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_elevator_exit(void)
+{
+	PRINT_FUNC_CO();
+	
+	hcm_unregister_workqueue(view_elevator_animation_arrow);
+}
+
 //------------------------------------------------------------------------------
 // Function Name  : view_elevator_init()
 // Description    :
@@ -121,146 +257,6 @@ void view_elevator_init(void)
 	ui_register_view(VIEW_ID_ELEVATOR, view_elevator_entry,
 		view_elevator_draw, view_elevator_exit);
 
-	register_key_handler(VIEW_ID_ELEVATOR, view_elevator_key);
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_entry()
-// Description    :
-//------------------------------------------------------------------------------
-void view_elevator_entry(void)
-{
-	char temp_str[64] = {0,};
-	char *side_txt;
-	
-	PRINT_FUNC_CO();
-
-	// comm_req_elevator_call();
-	
-	update_elevator_info();
-
-	ui_draw_image(g_elev_bg_h);
-
-	ui_draw_image(g_icon_img_h);
-
-	ui_draw_image(g_elev_img_h);
-
-	ui_draw_image(g_floor_img_h);
-	
-	ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터 상태 확인중 입니다");
-	//ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터를 호출하였습니다");
-	register_workqueue(500, view_elevator_animation_arrow);
-}
-
-#define ARROW_DOWN_OFFSET	ICON_IMG_ARROW_UP_3
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_animation_arrow()
-// Description    :
-//------------------------------------------------------------------------------
-static void view_elevator_animation_arrow(u32 _param)
-{
-	static u8 arrow_pos = 1;
-
-	switch (g_elev_status) {
-	case MTM_DATA_EV_STATUS_STOP:
-		arrow_pos = 0;
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
-		break;
-	case MTM_DATA_EV_STATUS_UP:
-		ui_draw_icon_image(g_arrow_icon_h, arrow_pos);
-		break;
-	case MTM_DATA_EV_STATUS_DOWN:
-		ui_draw_icon_image(g_arrow_icon_h, ARROW_DOWN_OFFSET + arrow_pos);
-		break;
-	case MTM_DATA_EV_STATUS_ARRIVE:
-		arrow_pos = 0;
-		ui_draw_icon_image(g_arrow_icon_h, ICON_IMG_ARROW_BLANK);
-		break;
-	}
-	
-	if (++arrow_pos > 3)
-		arrow_pos = 1;
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_draw()
-// Description    :
-//------------------------------------------------------------------------------
-void view_elevator_draw(void)
-{
-	char temp_str[64] = {0,};
-	char *side_txt;
-	rect_t rect;
-	
-	if (diff_elevator_info() == 0)
-		return;
-	
-	update_elevator_info();
-
-	rect.x = 245;
-	rect.y = 89;
-	rect.w = 500;
-	rect.h = 32;
-	ui_draw_image_part(g_elev_bg_h, &rect, &rect);
-
-	switch (g_elev_status) {
-	case MTM_DATA_EV_STATUS_STOP:
-		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 정지해 있습니다");
-		break;
-	case MTM_DATA_EV_STATUS_UP:
-		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
-		break;
-	case MTM_DATA_EV_STATUS_DOWN:
-		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 이동중 입니다");
-		break;
-	case MTM_DATA_EV_STATUS_ARRIVE:
-		ui_draw_text(245, 89, 500, 32, 24, WHITE, TXT_ALIGN_LEFT, "엘레베이터가 도착 하였습니다");
-		break;
-	}
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_exit()
-// Description    :
-//------------------------------------------------------------------------------
-void view_elevator_exit(void)
-{
-	PRINT_FUNC_CO();
-	unregister_workqueue(view_elevator_animation_arrow);
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_elevator_key()
-// Description    :
-//------------------------------------------------------------------------------
-void view_elevator_key(u16 _type, u16 _code)
-{
-	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
-
-	if (_type == KEY_TYPE_LONG) {
-		return;
-	}
-	
-	switch (_code) {
-	case KEY_RIGHT_TOP:
-		ui_switch_to(VIEW_ID_GAS);
-		break;
-	case KEY_RIGHT_MIDDLE:
-		ui_switch_to(VIEW_ID_LIGHT);
-		break;
-	case KEY_RIGHT_BOTTOM:
-		ui_switch_to(VIEW_ID_SECURITY);
-		break;
-	case KEY_LEFT_TOP:
-		ui_switch_to(VIEW_ID_WEATHER);
-		break;
-	case KEY_LEFT_MIDDLE:
-		// comm_req_elevator_call();
-		break;
-	case KEY_LEFT_BOTTOM:
-		ui_switch_to(VIEW_ID_PARKING);
-		break;
-	}
-
+	hcm_register_key_handler(VIEW_ID_ELEVATOR, view_elevator_key);
 }
 

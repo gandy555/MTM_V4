@@ -1,292 +1,196 @@
-/*
-*/
-#include "common.h"
-#include "context_security.h"
+/******************************************************************************
+ * Filename:
+ *   view_security.c
+ *
+ * Description:
+ *   The display related gas information 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-09-15
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
 #include "main.h"
 
-//
-// Construction/Destruction
-//
-CContextSecurity::CContextSecurity(GR_WINDOW_ID wid, GR_GC_ID gc)
-	: CContext(wid, gc)
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+enum {
+	ICON_IMG_SECU_ON = 0,
+	ICON_IMG_SECU_OFF
+};
+
+enum {
+	ICON_IMG_SECU_SW_ON = 0,
+	ICON_IMG_SECU_SW_OFF
+};
+
+static u8 g_security_status = 0;
+
+static obj_img_t *g_secu_bg_h;
+static obj_icon_t *g_secu_icon_h;
+static obj_icon_t *g_gas_sw_icon_h;
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+void view_security_init(void);
+
+//------------------------------------------------------------------------------
+// Function Name  : update_security_info()
+// Description    :
+//------------------------------------------------------------------------------
+void update_security_info(void)
 {
-	m_isWallPadStatus = FALSE;
-	m_isSecurityOn = FALSE;
+	g_security_status = g_app_status.security_stat;
 }
 
-CContextSecurity::~CContextSecurity()
+//------------------------------------------------------------------------------
+// Function Name  : diff_security_info()
+// Description    :
+//------------------------------------------------------------------------------
+u8 diff_security_info(void)
 {
-}
-
-//
-// Member Function
-//
-void CContextSecurity::Init()
-{
-	CObject* pObject;
-	CObjectIcon* pObjectIcon;
-	UINT id;
-
-	CContext::Init();
-
-	// Blank 배경 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 0, 0, g_scr_info.cols, g_scr_info.rows);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/blank_bg.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 아이콘 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 58, 50, 158, 158);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_ICON_COUNT);
-		pObject->LoadImage(IMG_ENUM_ICON_ON,	"/app/img/icon_security_on.png");
-		pObject->LoadImage(IMG_ENUM_ICON_OFF,	"/app/img/icon_security_off.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 스위치 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 312, 287, 299, 116);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_SWITCH_COUNT);
-		pObject->LoadImage(IMG_ENUM_SWITCH_ON,	"/app/img/icon_switch_on.png");
-		pObject->LoadImage(IMG_ENUM_SWITCH_OFF,	"/app/img/icon_switch_off.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	m_isSecurityOn = (g_app_status.security_stat) ? TRUE : FALSE;
-}
-
-void CContextSecurity::DeInit()
-{
-	CContext::DeInit();
+	if (g_security_status != g_app_status.security_stat)
+		return 1;
 	
-	m_ObjectList.RemoveAll();
+	return 0;
 }
 
-void CContextSecurity::Draw(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_security_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_security_key(u16 _type, u16 _code)
 {
-	CObjectIcon* pObjectIcon = NULL;
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
 
-	if(m_gc==0) return;
-
-	DBGMSGC(DBG_SECURITY, "++ [%d]\r\n", nContextNum);
-
-	//배경
-	m_ObjectList.Draw(SECURITY_OBJ_BG);
-
-	//아이콘
-	pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(SECURITY_OBJ_ICON);
-	if(pObjectIcon)
-	{
-//		pObjectIcon->Draw(m_isSecurityOn ? IMG_ENUM_ICON_ON : IMG_ENUM_ICON_OFF);
-		pObjectIcon->Draw(g_app_status.security_stat ? IMG_ENUM_ICON_ON : IMG_ENUM_ICON_OFF);
+	if (_type == KEY_TYPE_LONG) {
+		return;
 	}
-
-	//텍스트
-	vm_draw_text(144, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE, "방범해제");
-	vm_draw_text(625, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "방범설정");
-
-	switch(nContextNum)
-	{
-	case 0:
-		//텍스트
-		vm_draw_text(240, 108, 500, 40, 32, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "월패드 상태요청중..");
-
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(SECURITY_OBJ_SWITCH);
-		if(pObjectIcon)
-		{
-		//	pObjectIcon->Draw(IMG_ENUM_SWITCH_OFF);
-			pObjectIcon->Draw(g_app_status.security_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);	//ON=설정, OFF=해제
-		}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_switch_ui(VIEW_ID_GAS);
 		break;
-	case 1:
-	case 2:
-		//텍스트
-		if (g_app_status.security_stat) {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "자동방범이 설정되었습니다");
-		} else {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "자동방범이 해제되었습니다");
-		}
+	case KEY_RIGHT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		hcm_req_security_info();
+		break;
+	case KEY_LEFT_TOP:
+		hcm_switch_ui(VIEW_ID_WEATHER);
+		break;
+	case KEY_LEFT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_PARKING);
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_security_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_security_entry(void)
+{
+	PRINT_FUNC_CO();
+
+	hcm_req_security_info();
+
+	update_security_info();
+
+	ui_draw_image(g_secu_bg_h);
+
+	if (g_security_status) {
+		ui_draw_icon_image(g_secu_icon_h, ICON_IMG_SECU_ON);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_SECU_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "자동방범이 설정되었습니다");
+	} else {
+		ui_draw_icon_image(g_secu_icon_h, ICON_IMG_SECU_OFF);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_SECU_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "자동방범이 해제되었습니다");
+	}
 		
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(SECURITY_OBJ_SWITCH);
-		if(pObjectIcon)
-		{
-		//	pObjectIcon->Draw(m_isSecurityOn ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);
-			pObjectIcon->Draw(g_app_status.security_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);
-		}
-		break;
-	case 3:
-		vm_draw_text(240, 108, 500, 40, 32, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "월패드 응답대기중..");
-
-		//스위치 이미지
-		pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(SECURITY_OBJ_SWITCH);
-		if (pObjectIcon)
-			pObjectIcon->Draw(g_app_status.security_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);	//ON=설정, OFF=해제
-		break;
-	}
-
-	DBGMSGC(DBG_SECURITY, "--\r\n");
+	ui_draw_text(144, 329, 150, 32, 24, WHITE, TXT_ALIGN_RIGHT, "방범해제");
+	ui_draw_text(625, 329, 150, 32, 24, WHITE, TXT_ALIGN_LEFT, "방범설정");
 }
 
-void CContextSecurity::Proc(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_security_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_security_draw(void)
 {
-	char szWaveFile[2][14] = { "police_off\0", "police_on\0" };
-	char szWaveFilePath[128] = {0,};
+	if (diff_security_info() == 0)
+		return;
+	
+	update_security_info();
 
-	DBGMSGC(DBG_SECURITY, "++ [%d]\r\n", nContextNum);
-
-	switch(nContextNum)
-	{
-	case 0:
-	//	g_wallpad_sns.RequestReserve(SNS_CMD_WALLPAD_STAT_REQ);
-		if (g_pWallPad) {
-			m_isWallPadStatus = TRUE;
-			g_pWallPad->RequestSecurityStatus();
-		}
-		break;
-	case 1:
-	case 2:
-	//	sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[m_isSecurityOn]);
-		sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[g_app_status.security_stat]);
-		play_wav_file(szWaveFilePath);
-		break;
-	}
-
-	DBGMSGC(DBG_SECURITY, "--\r\n");
-}
-
-void CContextSecurity::TimerProc(UINT idTimer)
-{
-	switch(idTimer)
-	{
-	case RESPONSE_TIMER:
-		if(g_pWallPad)
-		{
-			// security_stat: 0=해제 --> TRUE =설정 
-			//			      1=설정 --> FALSE=해제
-			g_pWallPad->RequestSecuritySet( (g_app_status.security_stat) ? FALSE : TRUE );
-		}
-		break;
+	if (g_security_status) {
+		ui_draw_icon_image(g_secu_icon_h, ICON_IMG_SECU_ON);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_SECU_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "자동방범이 설정되었습니다");
+		// play_wave("/app/sound/police_on.wav\0");
+	} else {
+		ui_draw_icon_image(g_secu_icon_h, ICON_IMG_SECU_OFF);
+		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_SECU_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "자동방범이 해제되었습니다");
+		// play_wave("/app/sound/police_off.wav\0");
 	}
 }
 
-void CContextSecurity::RecvProc(UCHAR *pPacket)
+//------------------------------------------------------------------------------
+// Function Name  : view_security_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_security_exit(void)
 {
-	PMTM_HEADER pHdr = (PMTM_HEADER)pPacket;
-
-	if(pPacket==NULL) return;
-
-	DBGMSGC(DBG_SECURITY, "++\r\n");
-
-	switch(pHdr->type)
-	{
-	case MTM_DATA_TYPE_WEATHER:
-		break;
-	case MTM_DATA_TYPE_PARKING:
-		break;
-	case MTM_DATA_TYPE_ELEVATOR:
-		break;
-	case MTM_DATA_TYPE_GAS:
-		break;
-	case MTM_DATA_TYPE_LIGHT:
-		break;
-	case MTM_DATA_TYPE_SECURITY:
-		if (g_isBackLightOn) {
-			if (m_isWallPadStatus)
-				ChangeContext(1);
-			else
-				ChangeContext(2);
-		}
-		m_isWallPadStatus = 0;
-		break;
-	}
-
-	DBGMSGC(DBG_SECURITY, "--\r\n");
+	PRINT_FUNC_CO();
 }
 
-void CContextSecurity::ButtonDown(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_SECURITY, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_DOWN)
-	{
-	}
-	else if(usEventEnum == MTM_GPIO_BUTTON_LONG)
-	{
-#if 0	
-		if( CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_FRONT_RIGHT_TOP)|BIT_FLAG(GPIO_FRONT_RIGHT_BOTTOM)) ||
-			CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_REAR_VOL_UP)|BIT_FLAG(GPIO_REAR_VOL_DOWN)) )
-		{
-			g_state.ChangeState(STATE_SETUP);
-		}
-#endif		
-	}
-
-	DBGMSGC(DBG_SECURITY, "--\r\n");
-}
-
-void CContextSecurity::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
-{
-	DBGMSGC(DBG_SECURITY, "++\r\n");
-
-	if(usEventEnum == MTM_GPIO_BUTTON_UP)
-	{
-		switch(usGpioFlag)
-		{
-		case GPIO_FLAG_FRONT_LEFT_TOP:		//Weather
-			g_state.ChangeState(STATE_WEATHER);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_MIDDLE:	//Elevator
-			g_state.ChangeState(STATE_ELEVATOR);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_BOTTOM:	//Parking
-			g_state.ChangeState(STATE_PARKING);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_TOP:		//Gas
-			g_state.ChangeState(STATE_GAS);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_MIDDLE:	//Light
-			g_state.ChangeState(STATE_LIGHT);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_BOTTOM:	//Security
-			if(g_pWallPad)
-			{
-				// security_stat: 0=해제 --> TRUE =설정 
-				//			      1=설정 --> FALSE=해제
-				g_pWallPad->RequestSecuritySet( (g_app_status.security_stat) ? FALSE : TRUE );
-				ChangeContext(3);
-			#if 0
-				if(g_app_status.wallpad_type == WALLPAD_TYPE_HDT)
-				{
-					//	제어가 이루어 졌다고 판단하고 상태전환
-					g_app_status.security_stat = (g_app_status.security_stat==1) ? 0 : 1;
-
-					// 화면갱신
-					ChangeContext(1);
-				}
-			#endif
-			}
-			break;
-		}
+//------------------------------------------------------------------------------
+// Function Name  : view_security_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_security_init(void)
+{	
+	obj_img_t *bg_h = g_secu_bg_h;
+	obj_icon_t *secu_icon_h = g_secu_icon_h;
+	obj_icon_t *sw_icon_h = g_gas_sw_icon_h;
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
+	// security icon 
+	secu_icon_h = ui_create_icon_obj(58, 50, 158, 158);
+	if (secu_icon_h) {
+		ui_load_icon_img(secu_icon_h, ICON_IMG_SECU_ON,
+			"/app/img/icon_security_on.png");
+		ui_load_icon_img(secu_icon_h, ICON_IMG_SECU_OFF,
+			"/app/img/icon_security_off.png");
 	}
 
-	DBGMSGC(DBG_SECURITY, "--\r\n");
+	// switch icon 
+	sw_icon_h = ui_create_icon_obj(312, 287, 299, 116);
+	if (sw_icon_h) {
+		ui_load_icon_img(sw_icon_h, ICON_IMG_SECU_SW_ON,
+			"/app/img/icon_switch_on.png");
+		ui_load_icon_img(sw_icon_h, ICON_IMG_SECU_SW_OFF,
+			"/app/img/icon_switch_off.png");
+	}
+
+	ui_register_view(VIEW_ID_SECURITY, view_security_entry,
+		view_security_draw, view_security_exit);
+
+	hcm_register_key_handler(VIEW_ID_SECURITY, view_security_key);
 }
 

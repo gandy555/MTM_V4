@@ -20,6 +20,7 @@ enum {
 #define MAX_PARKING_ZONE_NAME			7
 #define MAX_PARKING_CAR_NUM				5
 
+#define MAX_PARKING_LIST		4
 typedef struct {
 	u8 status;
 	char floor[MAX_PARKING_FLOOR_NAME];

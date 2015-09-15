@@ -37,7 +37,7 @@ static workqueue_list_t *g_app_workqueue;
  * Functions Declaration
  *
  ******************************************************************************/
-void register_key_handler(u8 _id, key_handler _handler);
+void hcm_register_key_handler(u8 _id, key_handler _handler);
 
 //------------------------------------------------------------------------------
 // Function Name  : backlight_on()
@@ -254,43 +254,114 @@ static void proc_key_handler(u32 _type, u32 _code)
 }
 
 //------------------------------------------------------------------------------
-// Function Name  : register_key_handler()
+// Function Name  : hcm_register_key_handler()
 // Description    : 
 //------------------------------------------------------------------------------
-void register_key_handler(u8 _id, key_handler _handler)
+void hcm_register_key_handler(u8 _id, key_handler _handler)
 {
 	g_key_handlers[_id] = _handler;
 }
 
 //------------------------------------------------------------------------------
-// Function Name  : ui_switch_to()
+// Function Name  : hcm_switch_ui()
 // Description    : 
 //------------------------------------------------------------------------------
-void ui_switch_to(u8 _id)
+void hcm_switch_ui(u8 _id)
 {
 	mtm_msg_t msg;
 	
 	MSG_INIT(msg);
-	msg.msg_id = MSG_EVENT_UI_SWITCH;
+	msg.msg_id = MSG_EVENT_SWITCH_UI;
 	
 	msg_send(&msg);
 }
 
 //------------------------------------------------------------------------------
-// Function Name  : register_workqueue()
+// Function Name  : hcm_req_drawing()
 // Description    : 
 //------------------------------------------------------------------------------
-void register_workqueue(u32 _period, work_handler _handler)
+void hcm_req_drawing(void)
+{
+	mtm_msg_t msg;
+	
+	MSG_INIT(msg);
+	msg.msg_id = MSG_EVENT_DRAW_UI;
+	
+	msg_send(&msg);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_light_control()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_light_control(void)
+{
+	g_app_status.light_stat ^= 1;
+	// comm_req_light_ctrl(g_app_status.light_stat);
+	hcm_req_drawing();
+	gpio_set(GPIOG, GPIO_RELAY);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_elevator_call()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_elevator_call(void)
+{
+	// comm_req_elevator_call();
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_gas_status()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_gas_status(void)
+{
+	// comm_req_gas_status();
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_weather_info()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_weather_info(void)
+{
+	// comm_req_weather_info();
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_parking_info()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_parking_info(void)
+{
+	// comm_req_parking_info();
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_req_security_info()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_req_security_info(void)
+{
+	// comm_req_security_info();
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : hcm_register_workqueue()
+// Description    : 
+//------------------------------------------------------------------------------
+void hcm_register_workqueue(u32 _period, work_handler _handler)
 {
 	workqueue_register_delayed(APP_WQ_H, _period,
 		INFINITE, NULL, NULL, _handler);
 }
 
 //------------------------------------------------------------------------------
-// Function Name  : unregister_workqueue()
+// Function Name  : hcm_unregister_workqueue()
 // Description    : 
 //------------------------------------------------------------------------------
-void unregister_workqueue(work_handler _handler)
+void hcm_unregister_workqueue(work_handler _handler)
 {
 	if (workqueue_check(APP_WQ_H, _handler)) 
 		workqueue_unregister(APP_WQ_H, _handler);
@@ -298,7 +369,7 @@ void unregister_workqueue(work_handler _handler)
 
 //------------------------------------------------------------------------------
 // Function Name  : main()
-// Description    : 
+// Description    : host control manager
 //------------------------------------------------------------------------------
 int main(int arg_gc, char *argv[])
 {
@@ -316,7 +387,7 @@ int main(int arg_gc, char *argv[])
 	while (g_main_loop) {
 		if (msg_rcv(&msg) > 0) {
 			switch (msg.msg_id) {
-			case MSG_EVENT_UI_SWITCH:
+			case MSG_EVENT_SWITCH_UI:
 				ui_change_view(msg.param);
 				break;
 			case MSG_EVENT_MICROWAVE:
@@ -325,6 +396,9 @@ int main(int arg_gc, char *argv[])
 				g_app_status.door_opened = msg.param;
 				break;
 			case MSG_DATA_WALLPAD_PKT:
+				hcm_req_drawing();
+				break;
+			case MSG_EVENT_DRAW_UI:
 				ui_draw_view();
 				break;
 			}
@@ -339,7 +413,6 @@ int main(int arg_gc, char *argv[])
 		
 		usleep(1000);
 	}
-	
 	return 0;
 }
 

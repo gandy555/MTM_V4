@@ -76,8 +76,6 @@ static u32 r_weather_idx;
 static int l_temp_lsb, l_temp_msb;
 static int r_temp_lsb, r_temp_msb;
 static parking_info_t parking_info;
-static workqueue_list_t *g_weather_workqueue;
-#define WEATHER_WQ_H	g_weather_workqueue
 /******************************************************************************
  *
  * Public Functions Declaration
@@ -138,6 +136,40 @@ u8 diff_weather_info(void)
 		return 1;
 
 	return 0;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : view_weather_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_weather_key(u16 _type, u16 _code)
+{
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
+
+	if (_type == KEY_TYPE_LONG) {
+		return;
+	}
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_switch_ui(VIEW_ID_GAS);
+		break;
+	case KEY_RIGHT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_LIGHT);
+		break;
+	case KEY_RIGHT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_SECURITY);
+		break;
+	case KEY_LEFT_TOP:
+		hcm_req_weather_info();
+		break;
+	case KEY_LEFT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_PARKING);
+		break;
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -258,42 +290,6 @@ void view_weather_draw(void)
 void view_weather_exit(void)
 {
 	PRINT_FUNC_CO();
-
-	workqueue_delete_all(WEATHER_WQ_H);
-}
-
-//------------------------------------------------------------------------------
-// Function Name  : view_weather_key()
-// Description    :
-//------------------------------------------------------------------------------
-void view_weather_key(u16 _type, u16 _code)
-{
-	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
-
-	if (_type == KEY_TYPE_LONG) {
-		return;
-	}
-	
-	switch (_code) {
-	case KEY_RIGHT_TOP:
-		ui_switch_to(VIEW_ID_GAS);
-		break;
-	case KEY_RIGHT_MIDDLE:
-		ui_switch_to(VIEW_ID_LIGHT);
-		break;
-	case KEY_RIGHT_BOTTOM:
-		ui_switch_to(VIEW_ID_SECURITY);
-		break;
-	case KEY_LEFT_TOP:
-		// comm_req_weather_info();
-		break;
-	case KEY_LEFT_MIDDLE:
-		ui_switch_to(VIEW_ID_ELEVATOR);
-		break;
-	case KEY_LEFT_BOTTOM:
-		ui_switch_to(VIEW_ID_PARKING);
-		break;
-	}
 }
 
 //------------------------------------------------------------------------------
@@ -306,8 +302,6 @@ void view_weather_init(void)
 	obj_icon_t *l_icon_h = g_l_icon_h;
 	obj_icon_t *r_icon_h = g_r_icon_h;
 	obj_icon_t *gas_icon_h = g_gas_icon_h;
-
-	WEATHER_WQ_H = workqueue_create("WEATHER VIEW");
 	
 	// back ground image
 	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
@@ -377,6 +371,6 @@ void view_weather_init(void)
 	ui_register_view(VIEW_ID_WEATHER, view_weather_entry,
 		view_weather_draw, 	view_weather_exit);
 	
-	register_key_handler(VIEW_ID_WEATHER, view_weather_key);
+	hcm_register_key_handler(VIEW_ID_WEATHER, view_weather_key);
 }
 

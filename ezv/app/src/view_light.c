@@ -1,272 +1,194 @@
-/*
-*/
-#include "common.h"
-#include "context_light.h"
+/******************************************************************************
+ * Filename:
+ *   view_light.c
+ *
+ * Description:
+ *   The display related light information 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-09-15
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
 #include "main.h"
 
-//
-// Construction/Destruction
-//
-CContextLight::CContextLight(GR_WINDOW_ID wid, GR_GC_ID gc)
-	: CContext(wid, gc)
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+enum {
+	ICON_IMG_LIGHT_ON = 0,
+	ICON_IMG_LIGHT_OFF
+};
+
+enum {
+	ICON_IMG_LIGHT_SW_ON = 0,
+	ICON_IMG_LIGHT_SW_OFF
+};
+
+static u8 g_light_status = 0;
+
+static obj_img_t *g_light_bg_h;
+static obj_icon_t *g_light_icon_h;
+static obj_icon_t *g_light_sw_icon_h;
+/******************************************************************************
+ *
+ * Public Functions Declaration
+ *
+ ******************************************************************************/
+void view_light_init(void);
+
+//------------------------------------------------------------------------------
+// Function Name  : update_light_info()
+// Description    :
+//------------------------------------------------------------------------------
+void update_light_info(void)
 {
-	m_isWallPadStatus = FALSE;
+	g_light_status = g_app_status.light_stat;
 }
 
-CContextLight::~CContextLight()
+//------------------------------------------------------------------------------
+// Function Name  : diff_light_info()
+// Description    :
+//------------------------------------------------------------------------------
+u8 diff_light_info(void)
 {
-}
-
-//
-// Member Function
-//
-void CContextLight::Init()
-{
-	CObject* pObject;
-	CObjectIcon* pObjectIcon;
-	UINT id;
-
-	CContext::Init();
-
-	// Blank 배경 이미지
-	pObject = new CObjectImage(m_wid_parent, m_gc, 0, 0, g_scr_info.cols, g_scr_info.rows);
-	if(pObject)
-	{
-		pObject->LoadImage(IMG_BACKGROUND, "/app/img/blank_bg.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 아이콘 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 58, 50, 158, 158);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_ICON_COUNT);
-		pObject->LoadImage(IMG_ENUM_ICON_ON,	"/app/img/icon_light_on.png");
-		pObject->LoadImage(IMG_ENUM_ICON_OFF,	"/app/img/icon_light_off.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-
-	// 스위치 이미지
-	pObject = new CObjectIcon(m_wid_parent, m_gc, 312, 287, 299, 116);
-	if(pObject)
-	{
-		pObjectIcon = (CObjectIcon*)pObject;
-		pObjectIcon->AllocImageCount(IMG_ENUM_SWITCH_COUNT);
-		pObject->LoadImage(IMG_ENUM_SWITCH_ON,	"/app/img/icon_switch_on.png");
-		pObject->LoadImage(IMG_ENUM_SWITCH_OFF,	"/app/img/icon_switch_off.png");
-
-		id = m_ObjectList.AddObject(pObject);
-	}
-}
-
-void CContextLight::DeInit()
-{
-	CContext::DeInit();
+	if (g_light_status != g_app_status.light_stat)
+		return 1;
 	
-	m_ObjectList.RemoveAll();
+	return 0;
 }
 
-//램프가 켜져있다는것은 일괄소등 SW가 OFF됬다는 뜻
-void CContextLight::Draw(UINT nContextNum)
+//------------------------------------------------------------------------------
+// Function Name  : view_light_key()
+// Description    :
+//------------------------------------------------------------------------------
+void view_light_key(u16 _type, u16 _code)
 {
-	CObjectIcon* pObjectIcon = NULL;
+	DBG_MSG_CO(CO_BLUE, "<%s> type: %d, code: %d\r\n", _type, _code);
 
-	if(m_gc==0) return;
-
-	DBGMSGC(DBG_LIGHT, "++ [%d]\r\n", nContextNum);
-
-	//배경
-	m_ObjectList.Draw(LIGHT_OBJ_BG);
-
-	//아이콘
-	pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(LIGHT_OBJ_ICON);
-	if(pObjectIcon)
-	{
-		pObjectIcon->Draw(g_app_status.light_stat ? IMG_ENUM_ICON_ON : IMG_ENUM_ICON_OFF);
+	if (_type == KEY_TYPE_LONG) {
+		return;
 	}
-
-	//텍스트
-	vm_draw_text(144, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_RIGHT|TXT_VALIGN_MIDDLE, "일괄소등해제");
-	vm_draw_text(625, 329, 150, 32, 24, WHITE,
-		TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "일괄소등");
-
-	switch(nContextNum)
-	{
-	case 0:
-		//텍스트
-		vm_draw_text(240, 108, 500, 40, 32, WHITE,
-			TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "월패드 상태요청중..");
+	
+	switch (_code) {
+	case KEY_RIGHT_TOP:
+		hcm_switch_ui(VIEW_ID_GAS);
 		break;
-	case 1:
-	case 2:
-		//텍스트
-		if (g_app_status.light_stat) {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "일괄소등되었습니다");
-		} else {
-			vm_draw_text(240, 108, 500, 40, 32, WHITE,
-				TXT_HALIGN_LEFT|TXT_VALIGN_MIDDLE, "일괄소등 해제되었습니다");
-		}
+	case KEY_RIGHT_MIDDLE:
+		// hcm_req_light_control();
 		break;
-	}
-
-	//스위치
-	pObjectIcon = (CObjectIcon*)m_ObjectList.FindObjectByID(LIGHT_OBJ_SWITCH);
-	if(pObjectIcon)
-	{
-		pObjectIcon->Draw(g_app_status.light_stat ? IMG_ENUM_SWITCH_ON : IMG_ENUM_SWITCH_OFF);
-	}
-
-	DBGMSGC(DBG_LIGHT, "--\r\n");
-}
-
-void CContextLight::Proc(UINT nContextNum)
-{
-	char szWaveFile[2][14] = { "light_on\0", "light_off\0" };	//ON=소등해제, OFF=소등
-	char szWaveFilePath[128] = {0,};
-
-	DBGMSGC(DBG_LIGHT, "++ [%d]\r\n", nContextNum);
-
-	switch(nContextNum)
-	{
-	case 0:
-		if (g_pWallPad) {
-			m_isWallPadStatus = 1;
-			g_pWallPad->RequestLightStatus();
-		}
+	case KEY_RIGHT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_SECURITY);
 		break;
-	case 1:
-	case 2:
-		sprintf(szWaveFilePath, "/app/sound/%s.wav\0", szWaveFile[g_app_status.light_stat]);
-		play_wav_file(szWaveFilePath);
-	//	g_gpio_mtm.SetGpioOutPin(GPIO_RELAY, (g_app_status.light_stat) ? LOW : HIGH);	//LOW=소등, HIGH=소등해제
+	case KEY_LEFT_TOP:
+		hcm_switch_ui(VIEW_ID_WEATHER);
 		break;
-	}
-
-	DBGMSGC(DBG_LIGHT, "--\r\n");
-}
-
-void CContextLight::TimerProc(UINT idTimer)
-{
-	switch(idTimer)
-	{
-	case RESPONSE_TIMER:
-		if(g_pWallPad)
-		{
-			// light_stat: 0=점등(소등해제) --> TRUE=소등 
-			//			   1=소등           --> FALSE=점등(소등해제)
-			g_pWallPad->RequestLightSet( (g_app_status.light_stat) ? FALSE : TRUE );
-		}
+	case KEY_LEFT_MIDDLE:
+		hcm_switch_ui(VIEW_ID_ELEVATOR);
+		break;
+	case KEY_LEFT_BOTTOM:
+		hcm_switch_ui(VIEW_ID_PARKING);
 		break;
 	}
 }
 
-void CContextLight::RecvProc(UCHAR *pPacket)
+//------------------------------------------------------------------------------
+// Function Name  : view_light_entry()
+// Description    :
+//------------------------------------------------------------------------------
+void view_light_entry(void)
 {
-	PMTM_HEADER pHdr = (PMTM_HEADER)pPacket;
+	PRINT_FUNC_CO();
 
-	if(pPacket==NULL) return;
+	update_light_info();
 
-	DBGMSGC(DBG_LIGHT, "++\r\n");
+	ui_draw_image(g_light_bg_h);
 
-	//DBGDMP(DBG_LIGHT, pPacket, 21, TRUE);
-
-	switch(pHdr->type)
-	{
-	case MTM_DATA_TYPE_WEATHER:
-		break;
-	case MTM_DATA_TYPE_PARKING:
-		break;
-	case MTM_DATA_TYPE_ELEVATOR:
-		break;
-	case MTM_DATA_TYPE_GAS:
-		break;
-	case MTM_DATA_TYPE_LIGHT:
-		if (g_isBackLightOn) {
-			if (m_isWallPadStatus)
-				ChangeContext(1);
-			else
-				ChangeContext(2);
-		}
-		m_isWallPadStatus = FALSE;
-		break;
-	case MTM_DATA_TYPE_SECURITY:
-		break;
+	if (g_light_status) {
+		ui_draw_icon_image(g_light_icon_h, ICON_IMG_LIGHT_ON);
+		ui_draw_icon_image(g_light_sw_icon_h, ICON_IMG_LIGHT_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "일괄소등되었습니다");
+	} else {
+		ui_draw_icon_image(g_light_icon_h, ICON_IMG_LIGHT_OFF);
+		ui_draw_icon_image(g_light_sw_icon_h, ICON_IMG_LIGHT_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "일괄소등 해제되었습니다");
 	}
-
-	DBGMSGC(DBG_LIGHT, "--\r\n");
+		
+	ui_draw_text(144, 329, 150, 32, 24, WHITE, TXT_ALIGN_RIGHT, "일괄소등해제");
+	ui_draw_text(625, 329, 150, 32, 24, WHITE, TXT_ALIGN_LEFT, "일괄소등");
 }
 
-void CContextLight::ButtonDown(UINT usGpioFlag, UINT usEventEnum)
+//------------------------------------------------------------------------------
+// Function Name  : view_light_draw()
+// Description    :
+//------------------------------------------------------------------------------
+void view_light_draw(void)
 {
-	DBGMSGC(DBG_LIGHT, "++\r\n");
+	if (diff_light_info() == 0)
+		return;
+	
+	update_light_info();
 
-	if(usEventEnum == MTM_GPIO_BUTTON_DOWN)
-	{
+	if (g_light_status) {
+		ui_draw_icon_image(g_light_icon_h, ICON_IMG_LIGHT_ON);
+		ui_draw_icon_image(g_light_sw_icon_h, ICON_IMG_LIGHT_SW_ON);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "일괄소등되었습니다");
+		// play_wave("/app/sound/light_off.wav\0");
+	} else {
+		ui_draw_icon_image(g_light_icon_h, ICON_IMG_LIGHT_OFF);
+		ui_draw_icon_image(g_light_sw_icon_h, ICON_IMG_LIGHT_SW_OFF);
+		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "일괄소등 해제되었습니다");
+		// play_wave("/app/sound/light_on.wav\0");
 	}
-	else if(usEventEnum == MTM_GPIO_BUTTON_LONG)
-	{
-#if 0	
-		if( CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_FRONT_RIGHT_TOP)|BIT_FLAG(GPIO_FRONT_RIGHT_BOTTOM)) ||
-			CHK_FLAG(usGpioFlag, BIT_FLAG(GPIO_REAR_VOL_UP)|BIT_FLAG(GPIO_REAR_VOL_DOWN)) )
-		{
-			g_state.ChangeState(STATE_SETUP);
-		}
-#endif		
-	}
-
-	DBGMSGC(DBG_LIGHT, "--\r\n");
 }
 
-void CContextLight::ButtonUp(UINT usGpioFlag, UINT usEventEnum)
+//------------------------------------------------------------------------------
+// Function Name  : view_light_exit()
+// Description    :
+//------------------------------------------------------------------------------
+void view_light_exit(void)
 {
-	DBGMSGC(DBG_LIGHT, "++\r\n");
+	PRINT_FUNC_CO();
+}
 
-	if(usEventEnum == MTM_GPIO_BUTTON_UP)
-	{
-		switch(usGpioFlag)
-		{
-		case GPIO_FLAG_FRONT_LEFT_TOP:		//Weather
-			g_state.ChangeState(STATE_WEATHER);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_MIDDLE:	//Elevator
-			g_state.ChangeState(STATE_ELEVATOR);
-			break;
-		case GPIO_FLAG_FRONT_LEFT_BOTTOM:	//Parking
-			g_state.ChangeState(STATE_PARKING);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_TOP:		//Gas
-			g_state.ChangeState(STATE_GAS);
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_MIDDLE:	//Light
-			if(g_pWallPad)
-			{
-				// light_stat: 0=점등(소등해제) --> TRUE=소등 
-				//			   1=소등           --> FALSE=점등(소등해제)
-				g_pWallPad->RequestLightSet( (g_app_status.light_stat) ? FALSE : TRUE );
-
-				// 조명 키고 끄는것은 MTM이 주체다! - 손정우
-				// 현재상태와 반전동작
-				g_gpio_mtm.SetGpioOutPin(GPIO_RELAY, (g_app_status.light_stat) ? HIGH : LOW);	//LOW=소등, HIGH=소등해제
-
-				// 제어가 이루어 졌다고 가정하고 상태를 반전시킴 (월패드의 응답이 없을때 반전동작이 이루어 지지 않는 문제때문)
-				// 정상적으로 월패드가 응답한다면 응답상의 결과가 반영됨
-				g_app_status.light_stat = (g_app_status.light_stat==1) ? 0 : 1;
-				
-				// 화면갱신
-				ChangeContext(2);
-			}
-			break;
-		case GPIO_FLAG_FRONT_RIGHT_BOTTOM:	//Security
-			g_state.ChangeState(STATE_SECURITY);
-			break;
-		}
+//------------------------------------------------------------------------------
+// Function Name  : view_light_init()
+// Description    :
+//------------------------------------------------------------------------------
+void view_light_init(void)
+{	
+	obj_img_t *bg_h = g_light_bg_h;
+	obj_icon_t *light_icon_h = g_light_icon_h;
+	obj_icon_t *sw_icon_h = g_light_sw_icon_h;
+	
+	// back ground image
+	bg_h = ui_create_img_obj(0, 0, g_scr_info.cols, g_scr_info.rows,
+				"/app/img/blank_bg.png");
+	// light icon 
+	light_icon_h = ui_create_icon_obj(58, 50, 158, 158);
+	if (light_icon_h) {
+		ui_load_icon_img(light_icon_h, ICON_IMG_LIGHT_ON,
+			"/app/img/icon_light_on.png");
+		ui_load_icon_img(light_icon_h, ICON_IMG_LIGHT_OFF,
+			"/app/img/icon_light_off.png");
 	}
 
-	DBGMSGC(DBG_LIGHT, "--\r\n");
+	// switch icon 
+	sw_icon_h = ui_create_icon_obj(312, 287, 299, 116);
+	if (sw_icon_h) {
+		ui_load_icon_img(sw_icon_h, ICON_IMG_LIGHT_SW_ON,
+			"/app/img/icon_switch_on.png");
+		ui_load_icon_img(sw_icon_h, ICON_IMG_LIGHT_SW_OFF,
+			"/app/img/icon_switch_off.png");
+	}
+
+	ui_register_view(VIEW_ID_LIGHT, view_light_entry,
+		view_light_draw, view_light_exit);
+
+	hcm_register_key_handler(VIEW_ID_LIGHT, view_light_key);
 }
 
