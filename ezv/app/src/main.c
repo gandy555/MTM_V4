@@ -126,7 +126,7 @@ static BOOL init_gui()
 void init_comm()
 {
 	g_app_status.wallpad_type = WALLPAD_TYPE_EZV;
-	init_comm_ezv();
+	comm_ezv_init();
 }
 
 //------------------------------------------------------------------------------

@@ -7,7 +7,7 @@
 
 #include <termios.h>
 
-typedef void* (*PFN_SERIAL_DATA_HANDLER)(void *pParam);
+typedef void* (*serial_listener)(void *pParam);
 
 class CSerial
 {

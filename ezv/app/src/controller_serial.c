@@ -1,127 +1,163 @@
-/*
+/******************************************************************************
+ * Filename:
+ *   controller_serial.c
+ *
+ * Description:
+ *   controller of uart driver 
+ *
+ * Author:
+ *   gandy
+ *
+ * Version : V0.1_15-10-02
+ * ---------------------------------------------------------------------------
+ * Abbreviation
+ ******************************************************************************/
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include "main.h"
+#include "controller_serial.h"
 
-*/
-#include "common.h"
-#include "serial.h"
+/******************************************************************************
+ *
+ * Variable Declaration
+ *
+ ******************************************************************************/
+static int g_serial_fd;
+static pthread_t g_serial_thread;
 
-CSerial::CSerial()
+/******************************************************************************
+ *
+ * Functions Declaration
+ *
+ ******************************************************************************/
+void controller_serial_init(void);
+u8 serial_open(const char *_dev, u32 _baud);
+
+//------------------------------------------------------------------------------
+// Function Name  : controller_serial_init()
+// Description    :
+//------------------------------------------------------------------------------
+void controller_serial_init(void)
 {
-	m_fdDev				= ERROR;
-	m_fListenerRunning	= FALSE;
-	m_ListenerThread	= 0;
-	m_pfnHandler		= NULL;
+	g_serial_fd = -1;
+	g_serial_thread	= 0;
 }
 
-CSerial::~CSerial()
-{
-	Close();
-}
-
-BOOL CSerial::Open(const char *pszDev, unsigned int baudRate)
+//------------------------------------------------------------------------------
+// Function Name  : serial_open()
+// Description    :
+//------------------------------------------------------------------------------
+u8 serial_open(const char *_dev, u32 _baud)
 {
 	struct termios tio;
 
-	if(pszDev == NULL) 
-	{
-		DBGMSG(DBG_ERROR, "%s: invalid dev name\r\n", __func__);
+	if (_dev == NULL) {
+		DBG_MSG("<%s> invalid dev name\r\n", __func__);
+		return 0;
+	}
+
+	if ((strcmp(_dev, UART0_DEV) != 0) &&
+		(strcmp(_dev, UART1_DEV) != 0) && (strcmp(_dev, UART2_DEV) != 0)) {
+		DBG_MSG("<%s> unsupported dev name '%s'\r\n", __func__, _dev);
 		return FALSE;
 	}
 
-	if( (strcmp(pszDev, UART0_DEV)!=0) &&
-		(strcmp(pszDev, UART1_DEV)!=0) &&
-		(strcmp(pszDev, UART2_DEV)!=0) )
-	{
-		DBGMSG(DBG_ERROR, "%s: unsupported dev name '%s'\r\n", __func__, pszDev);
+	g_serial_fd = open(_dev, O_RDWR);
+	if (g_serial_fd < 0) {
+		DBG_MSG("<%s> '%s' device open failure\r\n", __func__, _dev);
 		return FALSE;
 	}
 
-	m_fdDev = open(pszDev, O_RDWR);
-	if(m_fdDev == ERROR)
-	{
-		DBGMSG(DBG_ERROR, "%s: '%s' device open failure\r\n", __func__, pszDev);
-		return FALSE;
-	}
-
-    memset(&tio, 0, sizeof(termios));
-    tio.c_iflag = IGNPAR;				// non-parity
-    tio.c_oflag = 0;					//
+	memset(&tio, 0, sizeof(termios));
+	tio.c_iflag = IGNPAR;				// non-parity
+	tio.c_oflag = 0;					//
 	tio.c_cflag = CS8 | CLOCAL | CREAD;	// NO-rts/cts	
+	tio.c_cflag |= _baud;
+	tio.c_lflag = 0;
 
-	tio.c_cflag |= baudRate;
+	tio.c_cc[VTIME] = 1;				// timeout 0.1초 단위
+	tio.c_cc[VMIN]  = 1;				// 최소 n 문자 받을 때까진 대기
 
-    tio.c_lflag = 0;
+	tcflush  ( g_serial_fd, TCIFLUSH );
+	tcsetattr( g_serial_fd, TCSANOW, &tio );
 
-    tio.c_cc[VTIME] = 1;				// timeout 0.1초 단위
-    tio.c_cc[VMIN]  = 1;				// 최소 n 문자 받을 때까진 대기
+	DBG_MSG("<%s> '%s' device open success\r\n", __func__, _dev);
 
-    tcflush  ( m_fdDev, TCIFLUSH );
-    tcsetattr( m_fdDev, TCSANOW, &tio );
-
-	DBGMSG(DBG_SERIAL, "%s: '%s' device open success\r\n", __func__, pszDev);
-	
 	return TRUE;
 }
 
-void CSerial::Close()
+//------------------------------------------------------------------------------
+// Function Name  : serial_close()
+// Description    :
+//------------------------------------------------------------------------------
+void serial_close(void)
 {
-	if(m_fdDev>=0)
-	{
-		close(m_fdDev);
-		m_fdDev = ERROR;
+	if (g_serial_fd >= 0) {
+		close(g_serial_fd);
+		g_serial_fd = -1;
 	}
 }
 
-BOOL CSerial::IsOpen()
+//------------------------------------------------------------------------------
+// Function Name  : serial_is_opened()
+// Description    :
+//------------------------------------------------------------------------------
+u8 serial_is_opened(void)
 {
-	return (m_fdDev != ERROR) ? TRUE : FALSE;
+	return (g_serial_fd != ERROR) ? TRUE : FALSE;
 }
 
-int CSerial::Write(const unsigned char *pszBuffer, int size)
+//------------------------------------------------------------------------------
+// Function Name  : serial_write()
+// Description    :
+//------------------------------------------------------------------------------
+int serial_write(const u8 *_data, u32 _size)
 {
 	int ret = ERROR;
 
-	if(m_fdDev>=0)
-	{
-		ret = write(m_fdDev, pszBuffer, size);
-		if(ret == ERROR)
-		{
-			DBGMSG(DBG_ERROR, "%s: write failure : errno=%d %s\r\n", __func__, errno, strerror(errno));
+	if (g_serial_fd >= 0) {
+		ret = write(g_serial_fd, _data, _size);
+		if (ret == ERROR) {
+			DBG_MSG("<%s> write failure : errno=%d %s\r\n",
+				__func__, errno, strerror(errno));
 			return ERROR;
 		}
-		//printf("%s: write success\r\n", __func__);
 	}
 
 	return ret;
 }
 
-int CSerial::Read(unsigned char *pBuffer, int size)
+//------------------------------------------------------------------------------
+// Function Name  : seria_read()
+// Description    :
+//------------------------------------------------------------------------------
+int seria_read(u8 *_data, u32 _size)
 {
 	int ret = ERROR;
 
-	if(m_fdDev>=0)
-	{
-		ret = read(m_fdDev, pBuffer, size);
-		if(ret == ERROR)
-		{
-			DBGMSG(DBG_ERROR, "%s: read failure : errno=%d %s\r\n", __func__, errno, strerror(errno));
+	if (g_serial_fd >= 0) {
+		ret = read(g_serial_fd, _data, _size);
+		if (ret == ERROR) {
+			DBG_MSG("<%s> read failure : errno=%d %s\r\n", __func__, errno, strerror(errno));
 			return ERROR;
 		}
-		//printf("%s: read success\r\n", __func__);
 	}
 
 	return ret;
 }
 
-BOOL CSerial::StartListener(PFN_SERIAL_DATA_HANDLER pfnHandler, void* pParam)
+BOOL CSerial::StartListener(serial_listener pfnHandler, void* pParam)
 {
 	int create_error;
 
 	m_fListenerRunning = TRUE;
 
 	if(pfnHandler)
-		create_error = pthread_create(&m_ListenerThread, NULL, pfnHandler, (pParam) ? pParam : this);
+		create_error = pthread_create(&g_serial_thread, NULL, pfnHandler, (pParam) ? pParam : this);
 	else
-		create_error = pthread_create(&m_ListenerThread, NULL, SerialListener, this);
+		create_error = pthread_create(&g_serial_thread, NULL, SerialListener, this);
 
 	if(create_error)
 	{
@@ -130,8 +166,6 @@ BOOL CSerial::StartListener(PFN_SERIAL_DATA_HANDLER pfnHandler, void* pParam)
 		Close();
 		return FALSE;
 	}
-
-	m_pfnHandler = pfnHandler;
 
 	return TRUE;
 }
@@ -145,7 +179,7 @@ void CSerial::StopListener()
 	{
 		m_fListenerRunning = FALSE;
 
-		ret = pthread_join(m_ListenerThread, &thread_result);
+		ret = pthread_join(g_serial_thread, &thread_result);
 		if(ret)
 		{
 			DBGMSG(DBG_ERROR, "%s: pthread_join failure: error=%d %s\r\n", __func__, errno, strerror(errno));
@@ -164,9 +198,9 @@ void* CSerial::SerialListener(void *pParam)
 
 	while(pThis->m_fListenerRunning)
 	{
-		FD_SET((unsigned int)pThis->m_fdDev, &fdRead);
-		ret = select(pThis->m_fdDev+1, &fdRead, NULL, NULL, &timeout);
-		if((ret != ERROR)&&(FD_ISSET(pThis->m_fdDev, &fdRead))) 
+		FD_SET((unsigned int)pThis->g_serial_fd, &fdRead);
+		ret = select(pThis->g_serial_fd+1, &fdRead, NULL, NULL, &timeout);
+		if((ret != ERROR)&&(FD_ISSET(pThis->g_serial_fd, &fdRead))) 
 		{
 			memset(buffer, 0, 1024);
 			ret = pThis->Read(buffer, 1024);

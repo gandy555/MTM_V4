@@ -1,26 +1,25 @@
 /******************************************************************************
  * Filename:
- *   Wallpad_ezville.cpp
+ *   app_obd_svc.c
  *
  * Description:
- *   Wallpad of ezville with communication interface module
+ *   obd service application
  *
  * Author:
  *   gandy
  *
- * Version : V0.1_15-05-11
+ * Version : V0.1_15-02-03
  * ---------------------------------------------------------------------------
  * Abbreviation
  ******************************************************************************/
-#include "common.h"
-#include "context_setup.h"
 #include "main.h"
+#include "controller_gpio.h"
+
 /******************************************************************************
  *
  * Variable Declaration
  *
  ******************************************************************************/
-
 #define EZV_HEADER			0xF7
 #define EZV_DEV_ID			0x53
 #define EZV_SUB_ID			0x01
@@ -155,15 +154,25 @@ static u8 g_dummy_req_idx = 0;
 		return 0;			\
 }
 
+CSerial		m_serial;
+static u8 g_receiving;					//수신중 여부 Flag
+static u8 g_request_id;
+pthread_mutex_t g_comm_mutex;
 /******************************************************************************
  *
  * Public Functions Declaration
  *
  ******************************************************************************/
-CWallPadEzville::CWallPadEzville()
+void comm_ezv_init(void);
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_init()
+// Description    :
+//------------------------------------------------------------------------------
+void comm_ezv_init(void)
 {
-	m_request_id = 0;
-	m_isRecv = 0;
+	g_request_id = 0;
+	g_receiving = 0;
 
 	g_dummy_req_idx = 3;	
 	memset(&g_dummy_req_list, 0, 4*sizeof(struct dummy_req_info));
@@ -190,12 +199,7 @@ CWallPadEzville::CWallPadEzville()
 	memset(&g_send_pkt, 0, sizeof(ezv_pkt_info_t));
 	memset(&g_rcv_pkt, 0, sizeof(ezv_pkt_info_t));
 
-	pthread_mutex_init(&m_wp_mutex, NULL);
-}
-
-CWallPadEzville::~CWallPadEzville()
-{
-	pthread_mutex_destroy(&m_wp_mutex);
+	pthread_mutex_init(&g_comm_mutex, NULL);
 }
 
 BOOL CWallPadEzville::Run()
@@ -204,7 +208,7 @@ BOOL CWallPadEzville::Run()
 	struct termios tio;
 
 	// 9600bps, 8bit, 1stopbit, non-parity
-	if ((fRet = m_serial.Open(UART1_DEV, B9600)) == FALSE) {
+	if ((fRet = serial_open(UART1_DEV, B9600)) == FALSE) {
 		DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Open Failure\r\n");
 		return FALSE;
 	}
@@ -316,7 +320,7 @@ void CWallPadEzville::get_request_dummy_data(u8 *_data)
 	printf("<%s> %d: %d\r\n", __func__,
 		g_dummy_req_idx, g_dummy_req_list[g_dummy_req_idx].cnt);
 
-	m_request_id = 0;
+	g_request_id = 0;
 	memcpy(_data, g_dummy_req_list[g_dummy_req_idx].data, STATUS_REQ_SIZE);
 	g_dummy_req_list[g_dummy_req_idx].cnt++;
 	
@@ -360,7 +364,7 @@ void CWallPadEzville::get_request_dummy_data(u8 *_data)
 
 void CWallPadEzville::append_request_list(req_info_list_t *_list, req_node_t *_node)
 {
-	pthread_mutex_lock(&m_wp_mutex);
+	pthread_mutex_lock(&g_comm_mutex);
 	_node->next = NULL;
 	if (_list->head == NULL) {
 		_list->head = _node;
@@ -371,7 +375,7 @@ void CWallPadEzville::append_request_list(req_info_list_t *_list, req_node_t *_n
 	}
 
 	_list->cnt++;
-	pthread_mutex_unlock(&m_wp_mutex);	
+	pthread_mutex_unlock(&g_comm_mutex);	
 }
 
 void CWallPadEzville::register_request_data(u8 _req_id, u8 _ctrl, u8 _onoff, u8 _retry)
@@ -427,7 +431,7 @@ u8 CWallPadEzville::delete_request_data(u8 _rql)
 	else
 		list = &g_req_info_list;
 	
-	pthread_mutex_lock(&m_wp_mutex);	
+	pthread_mutex_lock(&g_comm_mutex);	
 	if (list->cnt > 0) {
 		req_node_t *node = list->head;
 		//if (node->retry_cnt != REQ_RETRY_CNT) {	/* 시도 되지 않은 패킷 삭제는 금지 */
@@ -442,7 +446,7 @@ u8 CWallPadEzville::delete_request_data(u8 _rql)
 			res = 1;
 		//}
 	}
-	pthread_mutex_unlock(&m_wp_mutex);	
+	pthread_mutex_unlock(&g_comm_mutex);	
 
 	if (res)
 		printf("<%s> %d\r\n", __func__, list->cnt);
@@ -459,12 +463,12 @@ void CWallPadEzville::report_request_failed(u8 _rql)
 	else
 		list = &g_req_info_list;
 	
-	pthread_mutex_lock(&m_wp_mutex);	
+	pthread_mutex_lock(&g_comm_mutex);	
 	if (list->cnt > 0) {
 		req_node_t *node = list->head;
 		g_message.SendMessageData(MSG_WALLPAD_RSP_ERR, &node->data[REQ_ID_IDX], 2);
 	}
-	pthread_mutex_unlock(&m_wp_mutex);	
+	pthread_mutex_unlock(&g_comm_mutex);	
 }
 
 u8 CWallPadEzville::get_request_data(u8 _rql, u8 *_data)
@@ -477,21 +481,21 @@ u8 CWallPadEzville::get_request_data(u8 _rql, u8 *_data)
 	else
 		list = &g_req_info_list;
 	
-	pthread_mutex_lock(&m_wp_mutex);	
+	pthread_mutex_lock(&g_comm_mutex);	
 	if (list->cnt > 0) {
 		memcpy(_data, list->head->data, STATUS_REQ_SIZE);
 		list->head->retry_cnt--;
 		res = 1;
 	}
-	pthread_mutex_unlock(&m_wp_mutex);
+	pthread_mutex_unlock(&g_comm_mutex);
 	
 	if (res) {
 		if (list->head->retry_cnt == 0) {
 			report_request_failed(_rql);
 			delete_request_data(_rql);
 		}
-		m_request_id = _data[REQ_ID_IDX];
-		printf("<%s> %d\r\n", __func__, m_request_id);
+		g_request_id = _data[REQ_ID_IDX];
+		printf("<%s> %d\r\n", __func__, g_request_id);
 	}
 	
 	return res;
@@ -499,7 +503,7 @@ u8 CWallPadEzville::get_request_data(u8 _rql, u8 *_data)
 
 void CWallPadEzville::delete_all_request_data(void)
 {
-	m_request_id = 0;
+	g_request_id = 0;
 	
 	while (delete_request_data(RQL_STATUS)) {
 	}
@@ -523,7 +527,7 @@ int CWallPadEzville::Write(UCHAR *pData, int size)
 
 		//수신중일경우 대기
 		ulTick = get_mono_time();
-		while (m_isRecv) { 
+		while (g_receiving) { 
 			usleep(1000); 
 			if (get_elapsed_time(ulTick) >= 300) {
 				DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Wait for read done: Timeout!!\r\n");
@@ -911,7 +915,7 @@ void CWallPadEzville::update_elevator_info(u8 *_pkt)
 	else
 		ev_floor = _pkt[DATA_3_IDX];
 
-	if (m_request_id != RQ_ID_ELEVATOR) {
+	if (g_request_id != RQ_ID_ELEVATOR) {
 		if ((ev_status == g_app_status.elevator_status) &&
 			(ev_floor == g_app_status.elevator_floor)) {
 			printf("Aleady Seted \r\n", __func__);
@@ -959,7 +963,7 @@ void CWallPadEzville::update_security_info(u8 _new_stat)
 
 	printf("<%s>\r\n", __func__);
 
-	if (m_request_id != RQ_ID_SECURITY) {
+	if (g_request_id != RQ_ID_SECURITY) {
 		if (_new_stat == g_app_status.security_stat) {
 			printf("Aleady Seted \r\n");
 			return;
@@ -992,7 +996,7 @@ void CWallPadEzville::update_gas_info(u8 _new_stat)
 	else
 		gas_cut = 1;
 
-	if (m_request_id != RQ_ID_GAS) {
+	if (g_request_id != RQ_ID_GAS) {
 		if (gas_cut == g_app_status.gas_stat) {
 			printf("Aleady Seted(%d)\r\n", _new_stat);
 			return;
@@ -1019,7 +1023,7 @@ void CWallPadEzville::update_light_info(u8 _new_stat)
 
 	printf("<%s>\r\n", __func__);
 
-	if (m_request_id != RQ_ID_SWITCH) {
+	if (g_request_id != RQ_ID_SWITCH) {
 		if (_new_stat == g_app_status.light_stat) {
 			printf("Aleady Seted \r\n");
 			return;
@@ -1073,7 +1077,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_SWITCH)
+		if (g_request_id == RQ_ID_SWITCH)
 			delete_request_data(RQL_STATUS);
 		update_light_info(_pkt[DATA_1_IDX]);
 		break;
@@ -1087,7 +1091,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_GAS)
+		if (g_request_id == RQ_ID_GAS)
 			delete_request_data(RQL_STATUS);
 		update_gas_info(_pkt[DATA_1_IDX]);
 		break;
@@ -1101,7 +1105,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_SECURITY)
+		if (g_request_id == RQ_ID_SECURITY)
 			delete_request_data(RQL_STATUS);
 		update_security_info(_pkt[DATA_1_IDX]);
 		break;
@@ -1118,7 +1122,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_ELEVATOR)
+		if (g_request_id == RQ_ID_ELEVATOR)
 			delete_request_data(RQL_STATUS);
 		update_elevator_info(_pkt);
 		break;
@@ -1132,7 +1136,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_WEATHER)
+		if (g_request_id == RQ_ID_WEATHER)
 			delete_request_data(RQL_STATUS);		
 		update_weather_info(_pkt);
 		break;
@@ -1146,7 +1150,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_PARKING)
+		if (g_request_id == RQ_ID_PARKING)
 			delete_request_data(RQL_STATUS);		
 		update_parking_info(&_pkt[DATA_2_IDX]);
 		if (_size > 22)
@@ -1162,7 +1166,7 @@ u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
 		if (Write(pkt->buffer, pkt->size) <= 0) {
 			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
 		}
-		if (m_request_id == RQ_ID_DOOR)
+		if (g_request_id == RQ_ID_DOOR)
 			delete_request_data(RQL_STATUS);		
 		g_app_status.door_opened = _pkt[DATA_1_IDX];
 		break;
@@ -1296,7 +1300,7 @@ void CWallPadEzville::ezv_parser(void)
 	ULONG color;	
 	int ret;
 
-	m_isRecv = TRUE;
+	g_receiving = TRUE;
 
 	if (!pkt_rcv_n_delimeter(pkt)) {
 		//printf("<%s> Data size is not enough!\r\n", __func__);
@@ -1308,7 +1312,7 @@ void CWallPadEzville::ezv_parser(void)
 		return;
 	}
 	
-	m_isRecv = FALSE;
+	g_receiving = FALSE;
 
 	switch (pkt->buffer[CMD_TYPE_IDX]) {
 	case CMD_STATUS_REQ:

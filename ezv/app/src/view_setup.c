@@ -89,25 +89,6 @@ void view_setup_key(u16 _type, u16 _code)
 void view_setup_entry(void)
 {
 	PRINT_FUNC_CO();
-
-	hcm_req_gas_status();
-
-	update_gas_info();
-
-	ui_draw_image(g_gas_bg_h);
-
-	if (g_gas_status) {
-		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_OFF);
-		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_ON);
-		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 차단하였습니다");
-	} else {
-		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_ON);
-		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_OFF);
-		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 사용중입니다");
-	}
-		
-	ui_draw_text(144, 329, 150, 32, 24, WHITE, TXT_ALIGN_RIGHT, "가스사용");
-	ui_draw_text(625, 329, 150, 32, 24, WHITE, TXT_ALIGN_LEFT, "가스차단");
 }
 
 //------------------------------------------------------------------------------
@@ -116,22 +97,6 @@ void view_setup_entry(void)
 //------------------------------------------------------------------------------
 void view_setup_draw(void)
 {
-	if (diff_gas_info() == 0)
-		return;
-	
-	update_gas_info();
-
-	if (g_gas_status) {
-		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_ON);
-		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_ON);
-		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 차단하였습니다");
-		// play_wave("/app/sound/gas_off.wav\0");
-	} else {
-		ui_draw_icon_image(g_gas_icon_h, ICON_IMG_GAS_OFF);
-		ui_draw_icon_image(g_gas_sw_icon_h, ICON_IMG_GAS_SW_OFF);
-		ui_draw_text(240, 108, 500, 40, 32, WHITE, TXT_ALIGN_LEFT, "가스를 사용중입니다");
-		// play_wave("/app/sound/gas_on.wav\0");
-	}
 }
 
 //------------------------------------------------------------------------------
