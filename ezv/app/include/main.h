@@ -5,6 +5,7 @@
  * Variable Type Definition
  ******************************************************************************/
 #include "type.h"
+#include "duo_workqueue.h"
 
 enum {
 	MTM_DATA_EV_STATUS_STOP,

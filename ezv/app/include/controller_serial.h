@@ -1,40 +1,19 @@
-/*
-
-*/
-
 #ifndef __SERIAL_H__
 #define __SERIAL_H__
 
-#include <termios.h>
+/******************************************************************************
+ * Variable Type Definition
+ ******************************************************************************/
+typedef void* (*serial_listener)(void *_param);
 
-typedef void* (*serial_listener)(void *pParam);
-
-class CSerial
-{
-public:
-	CSerial();
-	~CSerial();
-
-	//Member Function
-	BOOL Open(const char *pszDev, unsigned int baudRate=B38400); //default=38400,8N1
-	void Close();
-
-	BOOL IsOpen();
-
-	int Write(const unsigned char *pszBuffer, int size);
-	int Read(unsigned char *pBuffer, int size);
-
-	BOOL StartListener(PFN_SERIAL_DATA_HANDLER pfnHandler = NULL, void* pParam = NULL);
-	void StopListener();
-
-	static void* SerialListener(void *pParam);
-
-	//Member Variable
-	int			m_fdDev;
-	BOOL		m_fListenerRunning;
-	pthread_t	m_ListenerThread;
-	PFN_SERIAL_DATA_HANDLER	m_pfnHandler;
-};
+/******************************************************************************
+ * Function Export
+ ******************************************************************************/
+extern int serial_open(const char *_dev, u32 _baud);
+extern void serial_close(int _fd);
+extern int serial_write(int _fd, const u8 *_data, u32 _size);
+extern int serial_read(int _fd, u8 *_data, u32 _size);
+extern int serial_register_listener(serial_listener _handler);
 
 #endif //__SERIAL_H__
 

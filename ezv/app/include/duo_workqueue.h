@@ -31,7 +31,7 @@ typedef struct workqueue_node{
 typedef struct {
 	struct workqueue_node *head;
 	struct workqueue_node *tail;
-	SYSTIM p_time;
+	u32 p_time;
 	int cnt;
 	char name[MAX_NAME_SIZE];
 } workqueue_list_t;

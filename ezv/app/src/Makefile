@@ -9,9 +9,6 @@ SOURCES	= \
 	  controller_gpio.c \
 	  controller_watchdog.c \
 	  controller_microwave.c \
-	  comm_hdt.c \
-	  comm_shn.c \
-	  comm_kcm.c \
 	  comm_ezv.c \
 	  view_light.c \
 	  view_elevator.c \
@@ -21,8 +18,7 @@ SOURCES	= \
 	  view_setup.c \
 	  view_weather.c \
 	  message.c \
-	  object.c \
-	  nano-X_custom.c \
+#	  nano-X_custom.c \
 	  setup_data.c \
 	  duo_utils.c \
 	  duo_workqueue.c \
@@ -35,9 +31,9 @@ CC	= $(PREFIX)-gcc
 CP	= $(PREFIX)-g++
 LD	= $(PREFIX)-ld
 
-WORK_DIR = /home/freejack/MTS_Work/mtm_v3
-NANOX_INC_PATH	= $(WORK_DIR)/nanoX/include
-NANOX_LIB_PATH	= $(WORK_DIR)/nanoX/libs
+WORK_DIR = 'pwd'
+NANOX_INC_PATH	= $(WORK_DIR)/../../../nanoX/include
+NANOX_LIB_PATH	= $(WORK_DIR)/../../../nanoX/libs
 
 DEFINE	 = -D_ARM_
 INCLUDE  += -I../include -I$(NANOX_INC_PATH)

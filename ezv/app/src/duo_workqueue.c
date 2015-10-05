@@ -1,6 +1,6 @@
 /******************************************************************************
  * Filename:
- *   tw_workqueue.c
+ *   duo_workqueue.c
  *
  * Description:
  *   workqueue
@@ -15,19 +15,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <basedef.h>
 #include <time.h>
-#include <kutil.h>
-#include <mqueue.h>
-#include <ucld.h>
-#include <fio/partition.h>
-#include <fio/fw_part.h>
-#include <ui/ambsh.h>
-#include <comsvc/utils.h>
-#include <app3/framework/defines.h>
-#include <app3/apps/apps.h>
-#include <app3/tw_utils/tw_utils.h>
-#include "tw_workqueue.h"
+#include "duo_workqueue.h"
 
 /******************************************************************************
  *
@@ -475,7 +464,7 @@ workqueue_list_t *workqueue_create(char *_name)
 		return NULL;
 	}
 	
-	new_h = tw_MemAlloc(sizeof(workqueue_list_t));	
+	new_h = malloc(sizeof(workqueue_list_t));	
 	if (new_h != NULL) {
 		memset(new_h, 0, sizeof(workqueue_list_t));
 		if (_name != NULL)

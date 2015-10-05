@@ -149,21 +149,920 @@ static u8 g_dummy_req_idx = 0;
 #define RQ_ID_WEATHER		0x20
 #define RQ_ID_PARKING		0x40
 
-#define READ_BYTE(p) {		\
-	if (m_serial.Read(p, 1) < 0)	\
-		return 0;			\
-}
-
-CSerial		m_serial;
+static int g_serial_fd;
 static u8 g_receiving;					//수신중 여부 Flag
 static u8 g_request_id;
 pthread_mutex_t g_comm_mutex;
+
+#define READ_BYTE(p) {		\
+	if (serial_read(g_serial_fd, p, 1) < 0)	\
+		return 0;			\
+}
 /******************************************************************************
  *
  * Public Functions Declaration
  *
  ******************************************************************************/
 void comm_ezv_init(void);
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static int Write(UCHAR *pData, int size)
+{
+	CContextSetup* pContextSetup = NULL;
+	int ret = ERROR;
+	ULONG ulTick, delay;
+
+	//수신중일경우 대기
+	ulTick = get_mono_time();
+	while (g_receiving) { 
+		usleep(1000); 
+		if (get_elapsed_time(ulTick) >= 300) {
+			DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Wait for read done: Timeout!!\r\n");
+			return -1;
+		}
+	}
+
+	// 485 Enable
+	g_gpio_mtm.SetGpioOutPin(GPIO_RS485_CTRL, LOW);
+
+	// TX Enable후 최초 패킷을 전송하기까지 1.5ms 지연
+	usleep(10);
+
+	ret = serial_write(g_serial_fd, pData, size);
+	if (ret != size) {
+		DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Write Bytes Error, write=%d, expect=%d\e\n", ret, size);
+	}
+
+	//마지막 패킷 전송후 TX Disable 하기까지 지연 (패킷사이즈 전송시간 + 1.5[ms])
+	delay = (size * 1042) + 10;	// 9600[bps]에서 1start+8bit+1stop 전송속도는 1.04167[ms] 이므로 21 byte는 21.875[ms]
+	usleep(delay);
+
+	// 485 Disable
+	g_gpio_mtm.SetGpioOutPin(GPIO_RS485_CTRL, HIGH);
+
+#if 1
+	if (g_isContextSetupWallPad) {
+		pContextSetup = (CContextSetup*)g_state.GetCurrContext();
+		if (pContextSetup) {
+			pContextSetup->PrintPacket(pData, size, CYAN, FALSE);
+		}
+	}
+#endif
+
+	return ret;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 calc_xor_sum(u8 *_pkt, UINT _size)
+{
+	u8 sum = 0;
+	UINT i;
+	
+	for (i = 0; i < _size-2; i++) {
+		sum ^= _pkt[i];
+	}
+
+	return sum;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 calc_add_sum(u8 *_pkt, UINT _size)
+{
+	u8 sum = 0;
+	UINT i;
+	
+	for (i = 0; i < _size-1; i++) {
+		sum += _pkt[i];
+	}
+
+	return sum;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 pkt_rcv_n_delimeter(ezv_pkt_info_t *_pkt)
+{
+	int ret, t_size;
+
+	switch (_pkt->size) {
+	case HEADER_IDX:
+		while (1) {
+			READ_BYTE(&_pkt->buffer[0]);
+			if (_pkt->buffer[0] == EZV_HEADER) {
+				_pkt->size++;
+				break;
+			}
+		}
+	case DEV_ID_IDX:
+		READ_BYTE(&_pkt->buffer[_pkt->size]);
+		if (_pkt->buffer[_pkt->size] != EZV_DEV_ID) {
+			_pkt->size = 0;
+			DBGMSG(DBG_WALLPAD, "Invalid Device ID");
+			return 0;
+		}
+		_pkt->size++;
+	case SUB_ID_IDX:
+		READ_BYTE(&_pkt->buffer[_pkt->size]);
+		if (_pkt->buffer[_pkt->size] != EZV_SUB_ID) {
+			_pkt->size = 0;
+			DBGMSG(DBG_WALLPAD, "Invalid Sub ID");
+			return 0;
+		}
+		_pkt->size++;
+	case CMD_TYPE_IDX:	
+		READ_BYTE(&_pkt->buffer[_pkt->size]);
+		_pkt->size++;
+	case DATA_LEN_IDX: 
+		READ_BYTE(&_pkt->buffer[_pkt->size]);
+		_pkt->size++;
+	default:	/* data */
+		t_size = _pkt->buffer[4] + 7;
+		if (_pkt->size == t_size) 
+			return 1;
+		ret = serial_read(g_serial_fd, &_pkt->buffer[_pkt->size], t_size-_pkt->size);
+		if (ret > 0)
+			_pkt->size = _pkt->size + ret;		
+		if (_pkt->size == t_size) 
+			return 1;
+		break;
+	}
+	
+	return 0;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 pkt_verify(ezv_pkt_info_t *_pkt)
+{
+	u8 xor_sum, add_sum;
+	
+	xor_sum = calc_xor_sum(_pkt->buffer, _pkt->size);
+	if (xor_sum != _pkt->buffer[_pkt->size-2]) {
+		DBGMSG(DBG_WALLPAD, "<%s> Invalid xor sum(0x%X / 0x%X)\r\n",
+			__func__, xor_sum, _pkt->buffer[_pkt->size-2]);
+		return 0;
+	}
+
+	add_sum = calc_add_sum(_pkt->buffer, _pkt->size);
+	if (add_sum != _pkt->buffer[_pkt->size-1]) {
+		DBGMSG(DBG_WALLPAD, "<%s> Invalid add sum(0x%X / 0x%X)\r\n",
+			__func__, add_sum, _pkt->buffer[_pkt->size-1]);
+		return 0;
+	}
+	
+	return 1;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void build_pkt(ezv_pkt_info_t *_pkt, u8 _cmd, u8 *_data, int _size)
+{	
+	memset(_pkt, 0, sizeof(ezv_pkt_info_t));
+
+	_pkt->size = _size + 7;
+	_pkt->buffer[HEADER_IDX] = EZV_HEADER;
+	_pkt->buffer[DEV_ID_IDX] = EZV_DEV_ID;
+	_pkt->buffer[SUB_ID_IDX] = EZV_SUB_ID;
+	_pkt->buffer[CMD_TYPE_IDX] = _cmd;
+	_pkt->buffer[DATA_LEN_IDX] = _size;
+	if (_size > 0)
+		memcpy(&_pkt->buffer[DATA_0_IDX], _data, _size);
+	_pkt->buffer[_pkt->size-2] = calc_xor_sum(_pkt->buffer, _pkt->size);
+	_pkt->buffer[_pkt->size-1] = calc_add_sum(_pkt->buffer, _pkt->size);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 conv_weather_icon_idx(u8 _idx)
+{
+	if (_idx == 1)
+		return IMG_ENUM_WEATHER_SERENITY;	//맑음
+
+	if ((_idx >= 2) && (_idx <= 3))
+		return IMG_ENUM_WEATHER_PARTLY_CLOUDY;	//구름조금
+
+	if ((_idx >= 5) && (_idx <= 6))
+		return IMG_ENUM_WEATHER_PARTLY_CLOUDY;	//구름조금
+
+	if (_idx == 4)
+		return IMG_ENUM_WEATHER_CLOUDY;	//흐림
+
+	if ((_idx >= 7) && (_idx <= 9))
+		return IMG_ENUM_WEATHER_CLOUDY;	//흐림
+
+	if ((_idx >= 10) && (_idx <= 17))
+		return IMG_ENUM_WEATHER_RAINNY;	//비
+
+	if ((_idx >= 18) && (_idx <= 35))
+		return IMG_ENUM_WEATHER_SNOW;		//눈
+
+	if ((_idx >= 36) && (_idx <= 38))
+		return IMG_ENUM_WEATHER_SHOWER;	//소나기
+
+	return IMG_ENUM_WEATHER_THUNDERSTORM;	//뇌우
+}
+
+/* [DATA_1_IDX] -> 년, 		[DATA_2_IDX] -> 월, [DATA_3_IDX] -> 일,
+/* [DATA_4_IDX] -> 시, 		[DATA_5_IDX] -> 분, [DATA_6_IDX] -> 초, 
+/* [DATA_7_IDX] -> 아이콘,	[DATA_8_IDX] -> 실외온도 영상/영하,
+/* [DATA_9_IDX] -> 실외온도 정수자리, [DATA_10_IDX] -> 실외온도 소수점 이하 */
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_weather_info(u8 *pBuffer)
+{
+	struct ezv_weather_info *weather_info = 
+		(struct ezv_weather_info *)&pBuffer[DATA_1_IDX];
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_WEATHER	pMtmWeather = 
+		(PMTM_DATA_WEATHER)&buffer_mtm[sizeof(MTM_HEADER)];
+	struct tm t = {0,};
+	struct timeval tvNew = {0,};
+	int i, temperature;
+
+	printf("<%s>\r\n", __func__);
+	
+	pMtmHdr->type = MTM_DATA_TYPE_WEATHER;
+	pMtmHdr->len  = sizeof(MTM_DATA_WEATHER);
+
+	//현재시간(arg1~arg6)
+	pMtmWeather->year	= weather_info->year;
+	pMtmWeather->month	= weather_info->month;
+	pMtmWeather->day	= weather_info->day;
+	pMtmWeather->hour	= weather_info->hour;
+	pMtmWeather->minute	= weather_info->minute;
+	pMtmWeather->second	= weather_info->second;
+
+	t.tm_year = weather_info->year + 100;
+	t.tm_mon  = weather_info->month - 1;
+	t.tm_mday = weather_info->day;
+	t.tm_hour = weather_info->hour;
+	t.tm_min  = weather_info->minute;
+	t.tm_sec  = weather_info->second;
+
+	tvNew.tv_sec  = mktime(&t);
+	tvNew.tv_usec = 0;
+
+	if (settimeofday(&tvNew, NULL) == ERROR) {
+		DBGMSG(DBG_WALLPAD, "[WallPad:HDT] settimeofday: error : %d %s\r\n", errno, strerror(errno));
+	} else {
+		system("hwclock -w");
+		g_timer.Refresh();
+		DBGMSG(DBG_WALLPAD, "[WallPad:HDT] settimeofday: done\r\n");
+	}
+
+	//날씨아이콘(arg7)
+	pMtmWeather->weather2 = conv_weather_icon_idx(weather_info->weather);
+
+	//온도(arg8~arg10)
+	if (weather_info->temp_under >= 10)
+		weather_info->temp_under = 1;	//소숫점 1자리로 맞춤
+	if (weather_info->temp_range) {	//영하
+		pMtmWeather->temp2_low  = 
+			(weather_info->temp_int*(-10) - weather_info->temp_under);
+	} else {
+		pMtmWeather->temp2_low  = 
+			(weather_info->temp_int*(10) + weather_info->temp_under);;
+	}
+	pMtmWeather->temp2_high = pMtmWeather->temp2_low;
+	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_WEATHER)] = MTM_PACKET_ETX;
+
+	//	월패드가 시간마다 주는 데이타만 쉬프트 시킴
+	g_app_status.weather_left = pMtmWeather->weather2;
+	g_app_status.temp_low_left = pMtmWeather->temp2_low;
+	g_app_status.temp_high_left = pMtmWeather->temp2_high;
+	g_app_status.weather_right = pMtmWeather->weather2;
+	g_app_status.temp_low_right = pMtmWeather->temp2_low;
+	g_app_status.temp_high_right = pMtmWeather->temp2_high;
+
+	if (g_state.GetState() == STATE_WEATHER) {
+		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_parking_info(u8 *pBuffer)
+{
+	struct ezv_parking_info *pParkingInfo = 
+		(struct ezv_parking_info *)pBuffer;
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	parking_info_t * pMtmParking = 
+		(parking_info_t *)&buffer_mtm[sizeof(MTM_HEADER)];
+	char *dump_ptr;
+	int i, index;
+
+	printf("<%s>\r\n", __func__);
+	
+	pMtmHdr->type = MTM_DATA_TYPE_PARKING;
+	pMtmHdr->len  = sizeof(parking_info_t);
+
+	//주차상태 : 입차만 확인
+	pMtmParking->status = PARKING_STATUS_IN;
+
+	//소문자->대문자 변환
+	if (pParkingInfo->floor_name >= 'a')
+		pParkingInfo->floor_name -= 0x20;
+	if (pParkingInfo->zone_name >= 'a')
+		pParkingInfo->zone_name  -= 0x20;
+
+	// verify the parking info
+	if (!ALPHABET_CHAR(pParkingInfo->floor_name)) {
+		printf("Invalid floor name: %c\r\n", pParkingInfo->floor_name);
+		return;
+	}
+#if 0	
+	if (!ALPHABET_CHAR(pParkingInfo->floor_num) && 
+		!DECIMAL_CHAR(pParkingInfo->floor_num) && 
+		!DECIMAL_BYTE(pParkingInfo->floor_num)) {
+		printf("Invalid floor number: %d\r\n", pParkingInfo->floor_num);
+		return;
+	}
+	
+	if (!ALPHABET_CHAR(pParkingInfo->zone_name) && 
+		!DECIMAL_CHAR(pParkingInfo->zone_name) &&
+		!DECIMAL_BYTE(pParkingInfo->zone_name)) {
+		printf("Invalid zone name: %d\r\n", pParkingInfo->zone_name);
+		return;
+	}
+#endif
+
+	//층명칭
+	if (DECIMAL_BYTE(pParkingInfo->floor_num))
+		sprintf(pMtmParking->floor, "%c%d", pParkingInfo->floor_name, pParkingInfo->floor_num);
+	else
+		sprintf(pMtmParking->floor, "%c%c", pParkingInfo->floor_name, pParkingInfo->floor_num);
+	
+	//구역명칭
+	if (DECIMAL_BYTE(pParkingInfo->zone_name))
+		sprintf(pMtmParking->zone, "%d-%d", pParkingInfo->zone_name, pParkingInfo->zone_num);
+	else
+		sprintf(pMtmParking->zone, "%c-%d", pParkingInfo->zone_name, pParkingInfo->zone_num);
+
+	memcpy(pMtmParking->car_num, pParkingInfo->tag_id, 2);
+	buffer_mtm[sizeof(MTM_HEADER)+sizeof(parking_info_t)] = MTM_PACKET_ETX;
+	if (pMtmParking->status == PARKING_STATUS_IN) {
+		g_app_status.park_status = pMtmParking->status;
+		memcpy(g_app_status.park_floor, pMtmParking->floor, MAX_PARKING_FLOOR_NAME);
+		memcpy(g_app_status.park_zone,  pMtmParking->zone, MAX_PARKING_ZONE_NAME);
+		memset(g_app_status.park_id, 0, MAX_PARKING_CAR_NUM);		//HDT는 차량번호 없음
+	}
+
+	parking_list_update(pMtmParking);
+
+	if ((g_state.GetState() == STATE_WEATHER) || (g_state.GetState() == STATE_PARKING)) {
+		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+	}
+}
+
+/* [DATA_1_IDX]  1호기 / 2호기 */
+/* [DATA_2_IDX]  지상 (0), 로비(0x4C), 지하 (0x42) */
+/* [DATA_3_IDX]  floor (1 ~ max) */
+/* [DATA_4_IDX]  direction (상향 : 1, 하향 : 0) */
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_elevator_info(u8 *_pkt)
+{
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_ELEVATOR	pMtmElv =
+		(PMTM_DATA_ELEVATOR)&buffer_mtm[sizeof(MTM_HEADER)];
+	char ev_floor;
+	u8 ev_status;
+
+	printf("<%s>\r\n", __func__);
+
+	if (_pkt[DATA_1_IDX] == 1) {	// Arrive
+		ev_status = MTM_DATA_EV_STATUS_ARRIVE;
+	} else {
+		if (_pkt[DATA_4_IDX] == 1)
+			ev_status = MTM_DATA_EV_STATUS_UP;
+		else
+			ev_status = MTM_DATA_EV_STATUS_DOWN;
+	}
+
+	if (_pkt[DATA_2_IDX] == 0x42)
+		ev_floor = -(_pkt[DATA_3_IDX]);
+	else
+		ev_floor = _pkt[DATA_3_IDX];
+
+	if (g_request_id != RQ_ID_ELEVATOR) {
+		if ((ev_status == g_app_status.elevator_status) &&
+			(ev_floor == g_app_status.elevator_floor)) {
+			printf("Aleady Seted \r\n", __func__);
+			return;
+		}
+	}
+	
+	g_app_status.elevator_status = ev_status;
+	g_app_status.elevator_floor = ev_floor;
+	if (g_state.GetState() == STATE_ELEVATOR) {
+		pMtmHdr->type = MTM_DATA_TYPE_ELEVATOR;
+		pMtmHdr->len  = sizeof(MTM_DATA_ELEVATOR);
+		pMtmElv->status = g_app_status.elevator_status;
+		pMtmElv->floor  = g_app_status.elevator_floor;
+		buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_ELEVATOR)] = MTM_PACKET_ETX;
+		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void report_elevator_called(u8 *_pkt)
+{
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_ELEVATOR	pMtmElv =
+		(PMTM_DATA_ELEVATOR)&buffer_mtm[sizeof(MTM_HEADER)];
+
+	printf("<%s>\r\n", __func__);
+
+	if (g_state.GetState() == STATE_ELEVATOR) {
+		pMtmHdr->type = MTM_DATA_TYPE_ELEVATOR;
+		pMtmHdr->len  = sizeof(MTM_DATA_ELEVATOR);
+		pMtmElv->status = MTM_DATA_EV_STATUS_CALLED;
+		pMtmElv->floor = 0;
+		buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_ELEVATOR)] = MTM_PACKET_ETX;
+		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_security_info(u8 _new_stat)
+{
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_SECURITY	pMtmSecurity = 
+		(PMTM_DATA_SECURITY)&buffer_mtm[sizeof(MTM_HEADER)];
+
+	printf("<%s>\r\n", __func__);
+
+	if (g_request_id != RQ_ID_SECURITY) {
+		if (_new_stat == g_app_status.security_stat) {
+			printf("Aleady Seted \r\n");
+			return;
+		}
+	}
+
+	g_app_status.security_stat = _new_stat;
+	pMtmHdr->type = MTM_DATA_TYPE_SECURITY;
+	pMtmHdr->len  = sizeof(MTM_DATA_SECURITY);
+	if(g_app_status.security_stat)
+		pMtmSecurity->status = MTM_DATA_SECURITY_ON;
+	else
+		pMtmSecurity->status = MTM_DATA_SECURITY_OFF;
+	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_SECURITY)] = MTM_PACKET_ETX;
+	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_gas_info(u8 _new_stat)
+{
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_SECURITY	pMtmSecurity = 
+		(PMTM_DATA_SECURITY)&buffer_mtm[sizeof(MTM_HEADER)];
+	u8 gas_cut;
+	
+	printf("<%s>\r\n", __func__);
+
+	if (_new_stat)
+		gas_cut = 0;
+	else
+		gas_cut = 1;
+
+	if (g_request_id != RQ_ID_GAS) {
+		if (gas_cut == g_app_status.gas_stat) {
+			printf("Aleady Seted(%d)\r\n", _new_stat);
+			return;
+		}
+	}
+
+	g_app_status.gas_stat = gas_cut;
+	pMtmHdr->type = MTM_DATA_TYPE_GAS;
+	pMtmHdr->len  = sizeof(MTM_DATA_GAS);
+	if(g_app_status.gas_stat)
+		pMtmSecurity->status = MTM_DATA_GAS_CUT;
+	else
+		pMtmSecurity->status = MTM_DATA_GAS_OPEN;
+	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_GAS)] = MTM_PACKET_ETX;
+	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void update_light_info(u8 _new_stat)
+{
+	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
+	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
+	PMTM_DATA_LIGHT pMtmDataLight = 
+		(PMTM_DATA_LIGHT)&buffer_mtm[sizeof(MTM_HEADER)];
+
+	printf("<%s>\r\n", __func__);
+
+	if (g_request_id != RQ_ID_SWITCH) {
+		if (_new_stat == g_app_status.light_stat) {
+			printf("Aleady Seted \r\n");
+			return;
+		}
+	}
+
+	g_app_status.light_stat = _new_stat;
+	pMtmHdr->type = MTM_DATA_TYPE_LIGHT;
+	pMtmHdr->len  = sizeof(MTM_DATA_LIGHT);
+	if(g_app_status.light_stat)
+		pMtmDataLight->status = MTM_DATA_LIGHT_OFF;
+	else
+		pMtmDataLight->status = MTM_DATA_LIGHT_ON;
+	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_LIGHT)] = MTM_PACKET_ETX;
+	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
+	g_gpio_mtm.SetGpioOutPin(GPIO_RELAY, (_new_stat==1) ? LOW : HIGH);			
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 wp_polling_pkt(u8 *_pkt)
+{
+	ezv_pkt_info_t *pkt = &g_send_pkt;
+	u8 data[5] = {0,};
+	
+	if (!get_request_data(RQL_CONTROL, data)) {
+		if (!get_request_data(RQL_STATUS, data)) 
+			get_request_dummy_data(data);
+	}
+	
+	build_pkt(pkt, CMD_STATUS_RSP, data, STATUS_REQ_SIZE);
+
+	usleep(PKT_WAIT_TIME_1);
+
+	if (Write(pkt->buffer, pkt->size) <= 0) {
+		DBGMSG(DBG_WALLPAD, "<%s> Write Faile\r\n", __func__);
+	}	
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 wp_status_pkt(u8 *_pkt, int _size)
+{
+	ezv_pkt_info_t *pkt = &g_send_pkt;
+	u8 rsp_data[64] = {0,};
+	
+	switch (_pkt[DATA_0_IDX]) {
+	case WCP_SWITCH:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_SWITCH;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;		
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);		
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_SWITCH)
+			delete_request_data(RQL_STATUS);
+		update_light_info(_pkt[DATA_1_IDX]);
+		break;
+	case WCP_GAS:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_GAS;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);			
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_GAS)
+			delete_request_data(RQL_STATUS);
+		update_gas_info(_pkt[DATA_1_IDX]);
+		break;
+	case WCP_SECURITY:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_SECURITY;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;		
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_SECURITY)
+			delete_request_data(RQL_STATUS);
+		update_security_info(_pkt[DATA_1_IDX]);
+		break;
+	case WCP_ELEVATOR:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_ELEVATOR;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = _pkt[DATA_2_IDX];
+		rsp_data[4] = _pkt[DATA_3_IDX];		
+		rsp_data[5] = _pkt[DATA_4_IDX];		
+		rsp_data[6] = 0;		
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 7);
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_ELEVATOR)
+			delete_request_data(RQL_STATUS);
+		update_elevator_info(_pkt);
+		break;
+	case WCP_WEATHER:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_WEATHER;
+		rsp_data[2] = 0;
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_WEATHER)
+			delete_request_data(RQL_STATUS);		
+		update_weather_info(_pkt);
+		break;
+	case WCP_PARKING:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_PARKING;
+		rsp_data[2] = 0;
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_PARKING)
+			delete_request_data(RQL_STATUS);		
+		update_parking_info(&_pkt[DATA_2_IDX]);
+		if (_size > 22)
+			update_parking_info(&_pkt[21]);
+		break;
+	case WCP_DOOR:
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_DOOR;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);
+		usleep(PKT_WAIT_TIME);	
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if (g_request_id == RQ_ID_DOOR)
+			delete_request_data(RQL_STATUS);		
+		g_app_status.door_opened = _pkt[DATA_1_IDX];
+		break;
+	default:
+		//delete_request_data(RQL_STATUS);		
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 verify_ctrl_pkt(u8 *_pkt, u8 _id, u8 _data)
+{
+	u8 ctrl_data;
+	
+	if (!CHECK_RQL(_pkt[REQ_ID_IDX], _id)) {
+		printf("invalid id_idx\r\n");
+		return 0;
+	}
+	
+	if (!CHECK_RQL(_pkt[REQ_CTRL_IDX], RQL_CONTROL)) {
+		printf("invalid ctrl_idx\r\n");
+		return 0;
+	}		
+
+	if (_pkt[REQ_ONOFF_IDX] == 2) // OFF
+		ctrl_data = 0;
+	else
+		ctrl_data = 1;
+	if (ctrl_data != _data) {
+		printf("invalid data!(%d / %d)\r\n", _data, ctrl_data);
+		return 0;
+	} 
+
+	return 1;
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static u8 wp_ctrl_pkt(u8 *_pkt)
+{
+	ezv_pkt_info_t *pkt = &g_send_pkt;
+	u8 rsp_data[64] = {0,};
+	u8 ctrl_data[5] = {0,}, res;
+
+	res = get_request_data(RQL_CONTROL, ctrl_data);	
+	switch (_pkt[DATA_0_IDX]) {
+	case MCP_SWITCH:
+		if (res) 
+			res = verify_ctrl_pkt(ctrl_data, RQL_SWITCH, _pkt[DATA_1_IDX]);		
+		if (res) {
+			rsp_data[0] = 0;	// OK
+		} else {
+			rsp_data[0] = 1;	// ERROR
+		}
+		rsp_data[1] = WCP_SWITCH;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);		
+		usleep(PKT_WAIT_TIME);
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}	
+		if (res)
+			delete_request_data(RQL_CONTROL);
+		break;
+	case MCP_GAS:
+		if (res) 
+			res = verify_ctrl_pkt(ctrl_data, RQL_GAS, _pkt[DATA_1_IDX]);		
+		if (res) 
+			rsp_data[0] = 0;	// OK
+		else
+			rsp_data[0] = 1;	// ERROR
+		rsp_data[1] = WCP_GAS;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);	
+		usleep(PKT_WAIT_TIME);
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}	
+		if (res) {
+			delete_request_data(RQL_CONTROL);
+			update_gas_info(_pkt[DATA_1_IDX]);
+		}
+		break;
+	case MCP_SECURITY:
+		if (res) 
+			res = verify_ctrl_pkt(ctrl_data, RQL_SECURITY, _pkt[DATA_1_IDX]);		
+		if (res) 
+			rsp_data[0] = 0;	// OK
+		else 
+			rsp_data[0] = 1;	// ERROR
+		rsp_data[1] = WCP_SECURITY;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);	
+		usleep(PKT_WAIT_TIME);
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}			
+		if (res) {
+			delete_request_data(RQL_CONTROL);
+			update_security_info(_pkt[DATA_1_IDX]);
+		}
+		break;
+	case MCP_ELEVATOR:
+		/* [DATA_1_IDX]  호출 (0x01) 도착 (0x02) */
+		rsp_data[0] = 0;	// OK
+		rsp_data[1] = WCP_ELEVATOR;
+		rsp_data[2] = _pkt[DATA_1_IDX];
+		rsp_data[3] = 0;
+		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);			
+		usleep(PKT_WAIT_TIME);
+		if (Write(pkt->buffer, pkt->size) <= 0) {
+			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
+		}
+		if ((res) && (CHECK_RQL(ctrl_data[REQ_ID_IDX], RQL_ELEVATOR)))  {
+			delete_request_data(RQL_CONTROL);		
+			report_elevator_called(_pkt);
+		}
+		break;
+	}
+}
+
+//------------------------------------------------------------------------------
+//  0xF7       0x53           0x01      0x01,0x41,0x43         xx         xx    xx    xx
+//------------------------------------------------------------------------------
+// header | device ID | sub-ID |     cmd type       | data_len | data |xor | add 
+//------------------------------------------------------------------------------
+static void ezv_parser(void)
+{
+	CContextSetup* pContextSetup = NULL;
+	ezv_pkt_info_t *pkt = &g_rcv_pkt;
+	ULONG color;	
+	int ret;
+
+	g_receiving = TRUE;
+
+	if (!pkt_rcv_n_delimeter(pkt)) {
+		//printf("<%s> Data size is not enough!\r\n", __func__);
+		return;
+	}
+
+	if (!pkt_verify(pkt)) {
+		memset(pkt, 0, sizeof(ezv_pkt_info_t));
+		return;
+	}
+	
+	g_receiving = FALSE;
+
+	switch (pkt->buffer[CMD_TYPE_IDX]) {
+	case CMD_STATUS_REQ:
+		wp_polling_pkt(pkt->buffer);
+		break;
+	case CMD_WP_STATUS_RES:
+		wp_status_pkt(pkt->buffer, pkt->size);
+		break;
+	case CMD_WP_CTRL_RES:
+		wp_ctrl_pkt(pkt->buffer);
+		break;
+	default:
+		DBGMSG(DBG_WALLPAD, "<%s> Invalid CMD TYPE: d\r\n", 
+			__func__, pkt->buffer[CMD_TYPE_IDX]);
+		break;
+	}
+	
+	if (g_isContextSetupWallPad) {
+		pContextSetup = (CContextSetup*)g_state.GetCurrContext();
+		if (pContextSetup) {
+			switch (pkt->buffer[CMD_TYPE_IDX]) {
+			case CMD_WP_STATUS_RES:
+			case CMD_WP_CTRL_RES:
+				color = LTCYAN;
+				break;
+			default:
+				color = LTGREEN;
+				break;
+			}
+			pContextSetup->PrintPacket(pkt->buffer, pkt->size, color);
+		}
+	}
+
+	memset(pkt, 0, sizeof(ezv_pkt_info_t));
+}
+
+//------------------------------------------------------------------------------
+// Function Name  : comm_ezv_thread()
+// Description    :
+//------------------------------------------------------------------------------
+static void *comm_ezv_thread(void *_param)
+{
+	struct timeval timeout;
+	fd_set read_fd;
+	int ret;
+
+	DBG_MSG("<%s> start\r\n", __func__);
+
+	while (1) {
+		FD_ZERO(&read_fd);
+		FD_SET(g_serial_fd, &read_fd);
+
+		timeout.tv_sec  = SELECT_TIMEOUT_SEC;
+		timeout.tv_usec = SELECT_TIMEOUT_USEC;
+		ret = select(g_serial_fd+1, &read_fd, NULL, NULL, &timeout);
+		if (FD_ISSET(g_serial_fd, &read_fd)) {
+			ezv_parser();
+		}
+	}
+
+	DBG_MSG("<%s> terminate\r\n", __func__);
+
+	pthread_exit(NULL); 
+}
 
 //------------------------------------------------------------------------------
 // Function Name  : comm_ezv_init()
@@ -171,6 +1070,8 @@ void comm_ezv_init(void);
 //------------------------------------------------------------------------------
 void comm_ezv_init(void)
 {
+	struct termios tio;
+	
 	g_request_id = 0;
 	g_receiving = 0;
 
@@ -200,36 +1101,22 @@ void comm_ezv_init(void)
 	memset(&g_rcv_pkt, 0, sizeof(ezv_pkt_info_t));
 
 	pthread_mutex_init(&g_comm_mutex, NULL);
-}
-
-BOOL CWallPadEzville::Run()
-{
-	BOOL fRet = FALSE;
-	struct termios tio;
 
 	// 9600bps, 8bit, 1stopbit, non-parity
-	if ((fRet = serial_open(UART1_DEV, B9600)) == FALSE) {
-		DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Open Failure\r\n");
-		return FALSE;
+	g_serial_fd = serial_open(UART1_DEV, B9600);
+	if (g_serial_fd < 0) {
+		DBG_MSG("<%s> error occured\r\n");
+		return;
 	}
 
 	//for RS-485
-	ioctl( m_serial.m_fdDev, 0x54F0, 0x0001 );
-    	tcflush  ( m_serial.m_fdDev, TCIFLUSH );
+	ioctl(g_serial_fd, 0x54F0, 0x0001 );
+    	tcflush(g_serial_fd, TCIFLUSH );
 
 	//Listener Start
-	if ((fRet = m_serial.StartListener(SerialListener_EZV, this)) == FALSE) {
-		DBGMSG(DBG_WALLPAD, "[WallPad:EZV] StartListener Failure\r\n");
-	}
-
-	return fRet;
-}
-
-void CWallPadEzville::Stop()
-{
-	m_serial.StopListener();
-
-	m_serial.Close();
+	if (!serial_register_listener(comm_ezv_thread)) {
+		DBG_MSG("<%s> listener register failed\r\n");
+	}	
 }
 
 void CWallPadEzville::RequestWeatherInfo()
@@ -515,837 +1402,4 @@ void CWallPadEzville::delete_all_request_data(void)
 //
 // Member Function
 //
-int CWallPadEzville::Write(UCHAR *pData, int size)
-{
-	CContextSetup* pContextSetup = NULL;
-	int ret = ERROR;
-	ULONG ulTick, delay;
-
-	if (m_serial.IsOpen()) {
-		DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Write\r\n");
-		DBGDMP(DBG_WALLPAD, pData, size, TRUE);
-
-		//수신중일경우 대기
-		ulTick = get_mono_time();
-		while (g_receiving) { 
-			usleep(1000); 
-			if (get_elapsed_time(ulTick) >= 300) {
-				DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Wait for read done: Timeout!!\r\n");
-				return -1;
-			}
-		}
-
-		// 485 Enable
-		g_gpio_mtm.SetGpioOutPin(GPIO_RS485_CTRL, LOW);
-
-		// TX Enable후 최초 패킷을 전송하기까지 1.5ms 지연
-		usleep(10);
-
-		ret = m_serial.Write(pData, size);
-		if (ret != size) {
-			DBGMSG(DBG_WALLPAD, "[WallPad:EZV] Write Bytes Error, write=%d, expect=%d\e\n", ret, size);
-		}
-
-		//마지막 패킷 전송후 TX Disable 하기까지 지연 (패킷사이즈 전송시간 + 1.5[ms])
-		delay = (size * 1042) + 10;	// 9600[bps]에서 1start+8bit+1stop 전송속도는 1.04167[ms] 이므로 21 byte는 21.875[ms]
-		usleep(delay);
-
-		// 485 Disable
-		g_gpio_mtm.SetGpioOutPin(GPIO_RS485_CTRL, HIGH);
-
-	#if 1
-		if (g_isContextSetupWallPad) {
-			pContextSetup = (CContextSetup*)g_state.GetCurrContext();
-			if (pContextSetup) {
-				pContextSetup->PrintPacket(pData, size, CYAN, FALSE);
-			}
-		}
-	#endif
-	}
-
-	return ret;
-}
-
-u8 CWallPadEzville::calc_xor_sum(u8 *_pkt, UINT _size)
-{
-	u8 sum = 0;
-	UINT i;
-	
-	for (i = 0; i < _size-2; i++) {
-		sum ^= _pkt[i];
-	}
-
-	return sum;
-}
-
-u8 CWallPadEzville::calc_add_sum(u8 *_pkt, UINT _size)
-{
-	u8 sum = 0;
-	UINT i;
-	
-	for (i = 0; i < _size-1; i++) {
-		sum += _pkt[i];
-	}
-
-	return sum;
-}
-
-//
-// Thread(SerialListener) Context
-//
-void* CWallPadEzville::SerialListener_EZV(void *pParam)
-{
-	CWallPadEzville *pThis = (CWallPadEzville *)pParam;
-	CSerial *pSerial = &pThis->m_serial;
-	struct timeval timeout;
-	fd_set fdRead;
-	int ret;
-
-	DBGMSG(DBG_WALLPAD, "%s: Start\r\n", __func__);
-
-	while (pSerial->m_fListenerRunning) {
-		FD_ZERO(&fdRead);
-		FD_SET(pSerial->m_fdDev, &fdRead);
-
-		timeout.tv_sec  = SELECT_TIMEOUT_SEC;
-		timeout.tv_usec = SELECT_TIMEOUT_USEC;
-		ret = select(pSerial->m_fdDev+1, &fdRead, NULL, NULL, &timeout);
-		if (FD_ISSET(pSerial->m_fdDev, &fdRead)) {
-			pThis->ezv_parser();
-		}
-	}
-
-	DBGMSG(DBG_WALLPAD, "%s: End\r\n", __func__);
-
-	pthread_exit(NULL); 
-}
-
-u8 CWallPadEzville::pkt_rcv_n_delimeter(ezv_pkt_info_t *_pkt)
-{
-	int ret, t_size;
-
-	switch (_pkt->size) {
-	case HEADER_IDX:
-		while (1) {
-			READ_BYTE(&_pkt->buffer[0]);
-			if (_pkt->buffer[0] == EZV_HEADER) {
-				_pkt->size++;
-				break;
-			}
-		}
-	case DEV_ID_IDX:
-		READ_BYTE(&_pkt->buffer[_pkt->size]);
-		if (_pkt->buffer[_pkt->size] != EZV_DEV_ID) {
-			_pkt->size = 0;
-			DBGMSG(DBG_WALLPAD, "Invalid Device ID");
-			return 0;
-		}
-		_pkt->size++;
-	case SUB_ID_IDX:
-		READ_BYTE(&_pkt->buffer[_pkt->size]);
-		if (_pkt->buffer[_pkt->size] != EZV_SUB_ID) {
-			_pkt->size = 0;
-			DBGMSG(DBG_WALLPAD, "Invalid Sub ID");
-			return 0;
-		}
-		_pkt->size++;
-	case CMD_TYPE_IDX:	
-		READ_BYTE(&_pkt->buffer[_pkt->size]);
-		_pkt->size++;
-	case DATA_LEN_IDX: 
-		READ_BYTE(&_pkt->buffer[_pkt->size]);
-		_pkt->size++;
-	default:	/* data */
-		t_size = _pkt->buffer[4] + 7;
-		if (_pkt->size == t_size) 
-			return 1;
-		ret = m_serial.Read(&_pkt->buffer[_pkt->size], t_size-_pkt->size);
-		if (ret > 0)
-			_pkt->size = _pkt->size + ret;		
-		if (_pkt->size == t_size) 
-			return 1;
-		break;
-	}
-	
-	return 0;
-}
-
-u8 CWallPadEzville::pkt_verify(ezv_pkt_info_t *_pkt)
-{
-	u8 xor_sum, add_sum;
-	
-	xor_sum = calc_xor_sum(_pkt->buffer, _pkt->size);
-	if (xor_sum != _pkt->buffer[_pkt->size-2]) {
-		DBGMSG(DBG_WALLPAD, "<%s> Invalid xor sum(0x%X / 0x%X)\r\n",
-			__func__, xor_sum, _pkt->buffer[_pkt->size-2]);
-		return 0;
-	}
-
-	add_sum = calc_add_sum(_pkt->buffer, _pkt->size);
-	if (add_sum != _pkt->buffer[_pkt->size-1]) {
-		DBGMSG(DBG_WALLPAD, "<%s> Invalid add sum(0x%X / 0x%X)\r\n",
-			__func__, add_sum, _pkt->buffer[_pkt->size-1]);
-		return 0;
-	}
-	
-	return 1;
-}
-
-void CWallPadEzville::build_pkt(ezv_pkt_info_t *_pkt, u8 _cmd, u8 *_data, int _size)
-{	
-	memset(_pkt, 0, sizeof(ezv_pkt_info_t));
-
-	_pkt->size = _size + 7;
-	_pkt->buffer[HEADER_IDX] = EZV_HEADER;
-	_pkt->buffer[DEV_ID_IDX] = EZV_DEV_ID;
-	_pkt->buffer[SUB_ID_IDX] = EZV_SUB_ID;
-	_pkt->buffer[CMD_TYPE_IDX] = _cmd;
-	_pkt->buffer[DATA_LEN_IDX] = _size;
-	if (_size > 0)
-		memcpy(&_pkt->buffer[DATA_0_IDX], _data, _size);
-	_pkt->buffer[_pkt->size-2] = calc_xor_sum(_pkt->buffer, _pkt->size);
-	_pkt->buffer[_pkt->size-1] = calc_add_sum(_pkt->buffer, _pkt->size);
-}
-
-u8 CWallPadEzville::conv_weather_icon_idx(u8 _idx)
-{
-	if (_idx == 1)
-		return IMG_ENUM_WEATHER_SERENITY;	//맑음
-
-	if ((_idx >= 2) && (_idx <= 3))
-		return IMG_ENUM_WEATHER_PARTLY_CLOUDY;	//구름조금
-
-	if ((_idx >= 5) && (_idx <= 6))
-		return IMG_ENUM_WEATHER_PARTLY_CLOUDY;	//구름조금
-
-	if (_idx == 4)
-		return IMG_ENUM_WEATHER_CLOUDY;	//흐림
-
-	if ((_idx >= 7) && (_idx <= 9))
-		return IMG_ENUM_WEATHER_CLOUDY;	//흐림
-
-	if ((_idx >= 10) && (_idx <= 17))
-		return IMG_ENUM_WEATHER_RAINNY;	//비
-
-	if ((_idx >= 18) && (_idx <= 35))
-		return IMG_ENUM_WEATHER_SNOW;		//눈
-
-	if ((_idx >= 36) && (_idx <= 38))
-		return IMG_ENUM_WEATHER_SHOWER;	//소나기
-
-	return IMG_ENUM_WEATHER_THUNDERSTORM;	//뇌우
-}
-
-/* [DATA_1_IDX] -> 년, 		[DATA_2_IDX] -> 월, [DATA_3_IDX] -> 일,
-/* [DATA_4_IDX] -> 시, 		[DATA_5_IDX] -> 분, [DATA_6_IDX] -> 초, 
-/* [DATA_7_IDX] -> 아이콘,	[DATA_8_IDX] -> 실외온도 영상/영하,
-/* [DATA_9_IDX] -> 실외온도 정수자리, [DATA_10_IDX] -> 실외온도 소수점 이하 */
-void CWallPadEzville::update_weather_info(u8 *pBuffer)
-{
-	struct ezv_weather_info *weather_info = 
-		(struct ezv_weather_info *)&pBuffer[DATA_1_IDX];
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_WEATHER	pMtmWeather = 
-		(PMTM_DATA_WEATHER)&buffer_mtm[sizeof(MTM_HEADER)];
-	struct tm t = {0,};
-	struct timeval tvNew = {0,};
-	int i, temperature;
-
-	printf("<%s>\r\n", __func__);
-	
-	pMtmHdr->type = MTM_DATA_TYPE_WEATHER;
-	pMtmHdr->len  = sizeof(MTM_DATA_WEATHER);
-
-	//현재시간(arg1~arg6)
-	pMtmWeather->year	= weather_info->year;
-	pMtmWeather->month	= weather_info->month;
-	pMtmWeather->day	= weather_info->day;
-	pMtmWeather->hour	= weather_info->hour;
-	pMtmWeather->minute	= weather_info->minute;
-	pMtmWeather->second	= weather_info->second;
-
-	t.tm_year = weather_info->year + 100;
-	t.tm_mon  = weather_info->month - 1;
-	t.tm_mday = weather_info->day;
-	t.tm_hour = weather_info->hour;
-	t.tm_min  = weather_info->minute;
-	t.tm_sec  = weather_info->second;
-
-	tvNew.tv_sec  = mktime(&t);
-	tvNew.tv_usec = 0;
-
-	if (settimeofday(&tvNew, NULL) == ERROR) {
-		DBGMSG(DBG_WALLPAD, "[WallPad:HDT] settimeofday: error : %d %s\r\n", errno, strerror(errno));
-	} else {
-		system("hwclock -w");
-		g_timer.Refresh();
-		DBGMSG(DBG_WALLPAD, "[WallPad:HDT] settimeofday: done\r\n");
-	}
-
-	//날씨아이콘(arg7)
-	pMtmWeather->weather2 = conv_weather_icon_idx(weather_info->weather);
-
-	//온도(arg8~arg10)
-	if (weather_info->temp_under >= 10)
-		weather_info->temp_under = 1;	//소숫점 1자리로 맞춤
-	if (weather_info->temp_range) {	//영하
-		pMtmWeather->temp2_low  = 
-			(weather_info->temp_int*(-10) - weather_info->temp_under);
-	} else {
-		pMtmWeather->temp2_low  = 
-			(weather_info->temp_int*(10) + weather_info->temp_under);;
-	}
-	pMtmWeather->temp2_high = pMtmWeather->temp2_low;
-	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_WEATHER)] = MTM_PACKET_ETX;
-
-	//	월패드가 시간마다 주는 데이타만 쉬프트 시킴
-	g_app_status.weather_left = pMtmWeather->weather2;
-	g_app_status.temp_low_left = pMtmWeather->temp2_low;
-	g_app_status.temp_high_left = pMtmWeather->temp2_high;
-	g_app_status.weather_right = pMtmWeather->weather2;
-	g_app_status.temp_low_right = pMtmWeather->temp2_low;
-	g_app_status.temp_high_right = pMtmWeather->temp2_high;
-
-	if (g_state.GetState() == STATE_WEATHER) {
-		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-	}
-}
-
-void CWallPadEzville::update_parking_info(u8 *pBuffer)
-{
-	struct ezv_parking_info *pParkingInfo = 
-		(struct ezv_parking_info *)pBuffer;
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	parking_info_t * pMtmParking = 
-		(parking_info_t *)&buffer_mtm[sizeof(MTM_HEADER)];
-	char *dump_ptr;
-	int i, index;
-
-	printf("<%s>\r\n", __func__);
-	
-	pMtmHdr->type = MTM_DATA_TYPE_PARKING;
-	pMtmHdr->len  = sizeof(parking_info_t);
-
-	//주차상태 : 입차만 확인
-	pMtmParking->status = PARKING_STATUS_IN;
-
-	//소문자->대문자 변환
-	if (pParkingInfo->floor_name >= 'a')
-		pParkingInfo->floor_name -= 0x20;
-	if (pParkingInfo->zone_name >= 'a')
-		pParkingInfo->zone_name  -= 0x20;
-
-	// verify the parking info
-	if (!ALPHABET_CHAR(pParkingInfo->floor_name)) {
-		printf("Invalid floor name: %c\r\n", pParkingInfo->floor_name);
-		return;
-	}
-#if 0	
-	if (!ALPHABET_CHAR(pParkingInfo->floor_num) && 
-		!DECIMAL_CHAR(pParkingInfo->floor_num) && 
-		!DECIMAL_BYTE(pParkingInfo->floor_num)) {
-		printf("Invalid floor number: %d\r\n", pParkingInfo->floor_num);
-		return;
-	}
-	
-	if (!ALPHABET_CHAR(pParkingInfo->zone_name) && 
-		!DECIMAL_CHAR(pParkingInfo->zone_name) &&
-		!DECIMAL_BYTE(pParkingInfo->zone_name)) {
-		printf("Invalid zone name: %d\r\n", pParkingInfo->zone_name);
-		return;
-	}
-#endif
-
-	//층명칭
-	if (DECIMAL_BYTE(pParkingInfo->floor_num))
-		sprintf(pMtmParking->floor, "%c%d", pParkingInfo->floor_name, pParkingInfo->floor_num);
-	else
-		sprintf(pMtmParking->floor, "%c%c", pParkingInfo->floor_name, pParkingInfo->floor_num);
-	
-	//구역명칭
-	if (DECIMAL_BYTE(pParkingInfo->zone_name))
-		sprintf(pMtmParking->zone, "%d-%d", pParkingInfo->zone_name, pParkingInfo->zone_num);
-	else
-		sprintf(pMtmParking->zone, "%c-%d", pParkingInfo->zone_name, pParkingInfo->zone_num);
-
-	memcpy(pMtmParking->car_num, pParkingInfo->tag_id, 2);
-	buffer_mtm[sizeof(MTM_HEADER)+sizeof(parking_info_t)] = MTM_PACKET_ETX;
-	if (pMtmParking->status == PARKING_STATUS_IN) {
-		g_app_status.park_status = pMtmParking->status;
-		memcpy(g_app_status.park_floor, pMtmParking->floor, MAX_PARKING_FLOOR_NAME);
-		memcpy(g_app_status.park_zone,  pMtmParking->zone, MAX_PARKING_ZONE_NAME);
-		memset(g_app_status.park_id, 0, MAX_PARKING_CAR_NUM);		//HDT는 차량번호 없음
-	}
-
-	parking_list_update(pMtmParking);
-
-	if ((g_state.GetState() == STATE_WEATHER) || (g_state.GetState() == STATE_PARKING)) {
-		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-	}
-}
-
-/* [DATA_1_IDX]  1호기 / 2호기 */
-/* [DATA_2_IDX]  지상 (0), 로비(0x4C), 지하 (0x42) */
-/* [DATA_3_IDX]  floor (1 ~ max) */
-/* [DATA_4_IDX]  direction (상향 : 1, 하향 : 0) */
-void CWallPadEzville::update_elevator_info(u8 *_pkt)
-{
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_ELEVATOR	pMtmElv =
-		(PMTM_DATA_ELEVATOR)&buffer_mtm[sizeof(MTM_HEADER)];
-	char ev_floor;
-	u8 ev_status;
-
-	printf("<%s>\r\n", __func__);
-
-	if (_pkt[DATA_1_IDX] == 1) {	// Arrive
-		ev_status = MTM_DATA_EV_STATUS_ARRIVE;
-	} else {
-		if (_pkt[DATA_4_IDX] == 1)
-			ev_status = MTM_DATA_EV_STATUS_UP;
-		else
-			ev_status = MTM_DATA_EV_STATUS_DOWN;
-	}
-
-	if (_pkt[DATA_2_IDX] == 0x42)
-		ev_floor = -(_pkt[DATA_3_IDX]);
-	else
-		ev_floor = _pkt[DATA_3_IDX];
-
-	if (g_request_id != RQ_ID_ELEVATOR) {
-		if ((ev_status == g_app_status.elevator_status) &&
-			(ev_floor == g_app_status.elevator_floor)) {
-			printf("Aleady Seted \r\n", __func__);
-			return;
-		}
-	}
-	
-	g_app_status.elevator_status = ev_status;
-	g_app_status.elevator_floor = ev_floor;
-	if (g_state.GetState() == STATE_ELEVATOR) {
-		pMtmHdr->type = MTM_DATA_TYPE_ELEVATOR;
-		pMtmHdr->len  = sizeof(MTM_DATA_ELEVATOR);
-		pMtmElv->status = g_app_status.elevator_status;
-		pMtmElv->floor  = g_app_status.elevator_floor;
-		buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_ELEVATOR)] = MTM_PACKET_ETX;
-		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-	}
-}
-
-void CWallPadEzville::report_elevator_called(u8 *_pkt)
-{
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_ELEVATOR	pMtmElv =
-		(PMTM_DATA_ELEVATOR)&buffer_mtm[sizeof(MTM_HEADER)];
-
-	printf("<%s>\r\n", __func__);
-
-	if (g_state.GetState() == STATE_ELEVATOR) {
-		pMtmHdr->type = MTM_DATA_TYPE_ELEVATOR;
-		pMtmHdr->len  = sizeof(MTM_DATA_ELEVATOR);
-		pMtmElv->status = MTM_DATA_EV_STATUS_CALLED;
-		pMtmElv->floor = 0;
-		buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_ELEVATOR)] = MTM_PACKET_ETX;
-		g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-	}
-}
-
-void CWallPadEzville::update_security_info(u8 _new_stat)
-{
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_SECURITY	pMtmSecurity = 
-		(PMTM_DATA_SECURITY)&buffer_mtm[sizeof(MTM_HEADER)];
-
-	printf("<%s>\r\n", __func__);
-
-	if (g_request_id != RQ_ID_SECURITY) {
-		if (_new_stat == g_app_status.security_stat) {
-			printf("Aleady Seted \r\n");
-			return;
-		}
-	}
-
-	g_app_status.security_stat = _new_stat;
-	pMtmHdr->type = MTM_DATA_TYPE_SECURITY;
-	pMtmHdr->len  = sizeof(MTM_DATA_SECURITY);
-	if(g_app_status.security_stat)
-		pMtmSecurity->status = MTM_DATA_SECURITY_ON;
-	else
-		pMtmSecurity->status = MTM_DATA_SECURITY_OFF;
-	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_SECURITY)] = MTM_PACKET_ETX;
-	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-}
-
-void CWallPadEzville::update_gas_info(u8 _new_stat)
-{
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_SECURITY	pMtmSecurity = 
-		(PMTM_DATA_SECURITY)&buffer_mtm[sizeof(MTM_HEADER)];
-	u8 gas_cut;
-	
-	printf("<%s>\r\n", __func__);
-
-	if (_new_stat)
-		gas_cut = 0;
-	else
-		gas_cut = 1;
-
-	if (g_request_id != RQ_ID_GAS) {
-		if (gas_cut == g_app_status.gas_stat) {
-			printf("Aleady Seted(%d)\r\n", _new_stat);
-			return;
-		}
-	}
-
-	g_app_status.gas_stat = gas_cut;
-	pMtmHdr->type = MTM_DATA_TYPE_GAS;
-	pMtmHdr->len  = sizeof(MTM_DATA_GAS);
-	if(g_app_status.gas_stat)
-		pMtmSecurity->status = MTM_DATA_GAS_CUT;
-	else
-		pMtmSecurity->status = MTM_DATA_GAS_OPEN;
-	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_GAS)] = MTM_PACKET_ETX;
-	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-}
-
-void CWallPadEzville::update_light_info(u8 _new_stat)
-{
-	UCHAR buffer_mtm[MTM_PACKET_MAX] = {0,};
-	PMTM_HEADER pMtmHdr = (PMTM_HEADER)&buffer_mtm[0];
-	PMTM_DATA_LIGHT pMtmDataLight = 
-		(PMTM_DATA_LIGHT)&buffer_mtm[sizeof(MTM_HEADER)];
-
-	printf("<%s>\r\n", __func__);
-
-	if (g_request_id != RQ_ID_SWITCH) {
-		if (_new_stat == g_app_status.light_stat) {
-			printf("Aleady Seted \r\n");
-			return;
-		}
-	}
-
-	g_app_status.light_stat = _new_stat;
-	pMtmHdr->type = MTM_DATA_TYPE_LIGHT;
-	pMtmHdr->len  = sizeof(MTM_DATA_LIGHT);
-	if(g_app_status.light_stat)
-		pMtmDataLight->status = MTM_DATA_LIGHT_OFF;
-	else
-		pMtmDataLight->status = MTM_DATA_LIGHT_ON;
-	buffer_mtm[sizeof(MTM_HEADER)+sizeof(MTM_DATA_LIGHT)] = MTM_PACKET_ETX;
-	g_message.SendMessageData(MSG_WALLPAD_DATA, buffer_mtm, pMtmHdr->len+5);
-	g_gpio_mtm.SetGpioOutPin(GPIO_RELAY, (_new_stat==1) ? LOW : HIGH);			
-}
-
-u8 CWallPadEzville::wp_polling_pkt(u8 *_pkt)
-{
-	ezv_pkt_info_t *pkt = &g_send_pkt;
-	u8 data[5] = {0,};
-	
-	if (!get_request_data(RQL_CONTROL, data)) {
-		if (!get_request_data(RQL_STATUS, data)) 
-			get_request_dummy_data(data);
-	}
-	
-	build_pkt(pkt, CMD_STATUS_RSP, data, STATUS_REQ_SIZE);
-
-	usleep(PKT_WAIT_TIME_1);
-
-	if (Write(pkt->buffer, pkt->size) <= 0) {
-		DBGMSG(DBG_WALLPAD, "<%s> Write Faile\r\n", __func__);
-	}	
-}
-
-u8 CWallPadEzville::wp_status_pkt(u8 *_pkt, int _size)
-{
-	ezv_pkt_info_t *pkt = &g_send_pkt;
-	u8 rsp_data[64] = {0,};
-	
-	switch (_pkt[DATA_0_IDX]) {
-	case WCP_SWITCH:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_SWITCH;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;		
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);		
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_SWITCH)
-			delete_request_data(RQL_STATUS);
-		update_light_info(_pkt[DATA_1_IDX]);
-		break;
-	case WCP_GAS:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_GAS;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);			
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_GAS)
-			delete_request_data(RQL_STATUS);
-		update_gas_info(_pkt[DATA_1_IDX]);
-		break;
-	case WCP_SECURITY:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_SECURITY;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;		
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_SECURITY)
-			delete_request_data(RQL_STATUS);
-		update_security_info(_pkt[DATA_1_IDX]);
-		break;
-	case WCP_ELEVATOR:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_ELEVATOR;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = _pkt[DATA_2_IDX];
-		rsp_data[4] = _pkt[DATA_3_IDX];		
-		rsp_data[5] = _pkt[DATA_4_IDX];		
-		rsp_data[6] = 0;		
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 7);
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_ELEVATOR)
-			delete_request_data(RQL_STATUS);
-		update_elevator_info(_pkt);
-		break;
-	case WCP_WEATHER:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_WEATHER;
-		rsp_data[2] = 0;
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_WEATHER)
-			delete_request_data(RQL_STATUS);		
-		update_weather_info(_pkt);
-		break;
-	case WCP_PARKING:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_PARKING;
-		rsp_data[2] = 0;
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);	
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_PARKING)
-			delete_request_data(RQL_STATUS);		
-		update_parking_info(&_pkt[DATA_2_IDX]);
-		if (_size > 22)
-			update_parking_info(&_pkt[21]);
-		break;
-	case WCP_DOOR:
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_DOOR;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_STATUS_ACK, rsp_data, 4);
-		usleep(PKT_WAIT_TIME);	
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if (g_request_id == RQ_ID_DOOR)
-			delete_request_data(RQL_STATUS);		
-		g_app_status.door_opened = _pkt[DATA_1_IDX];
-		break;
-	default:
-		//delete_request_data(RQL_STATUS);		
-		break;
-	}
-}
-
-u8 CWallPadEzville::verify_ctrl_pkt(u8 *_pkt, u8 _id, u8 _data)
-{
-	u8 ctrl_data;
-	
-	if (!CHECK_RQL(_pkt[REQ_ID_IDX], _id)) {
-		printf("invalid id_idx\r\n");
-		return 0;
-	}
-	
-	if (!CHECK_RQL(_pkt[REQ_CTRL_IDX], RQL_CONTROL)) {
-		printf("invalid ctrl_idx\r\n");
-		return 0;
-	}		
-
-	if (_pkt[REQ_ONOFF_IDX] == 2) // OFF
-		ctrl_data = 0;
-	else
-		ctrl_data = 1;
-	if (ctrl_data != _data) {
-		printf("invalid data!(%d / %d)\r\n", _data, ctrl_data);
-		return 0;
-	} 
-
-	return 1;
-}
-
-u8 CWallPadEzville::wp_ctrl_pkt(u8 *_pkt)
-{
-	ezv_pkt_info_t *pkt = &g_send_pkt;
-	u8 rsp_data[64] = {0,};
-	u8 ctrl_data[5] = {0,}, res;
-
-	res = get_request_data(RQL_CONTROL, ctrl_data);	
-	switch (_pkt[DATA_0_IDX]) {
-	case MCP_SWITCH:
-		if (res) 
-			res = verify_ctrl_pkt(ctrl_data, RQL_SWITCH, _pkt[DATA_1_IDX]);		
-		if (res) {
-			rsp_data[0] = 0;	// OK
-		} else {
-			rsp_data[0] = 1;	// ERROR
-		}
-		rsp_data[1] = WCP_SWITCH;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);		
-		usleep(PKT_WAIT_TIME);
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}	
-		if (res)
-			delete_request_data(RQL_CONTROL);
-		break;
-	case MCP_GAS:
-		if (res) 
-			res = verify_ctrl_pkt(ctrl_data, RQL_GAS, _pkt[DATA_1_IDX]);		
-		if (res) 
-			rsp_data[0] = 0;	// OK
-		else
-			rsp_data[0] = 1;	// ERROR
-		rsp_data[1] = WCP_GAS;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);	
-		usleep(PKT_WAIT_TIME);
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}	
-		if (res) {
-			delete_request_data(RQL_CONTROL);
-			update_gas_info(_pkt[DATA_1_IDX]);
-		}
-		break;
-	case MCP_SECURITY:
-		if (res) 
-			res = verify_ctrl_pkt(ctrl_data, RQL_SECURITY, _pkt[DATA_1_IDX]);		
-		if (res) 
-			rsp_data[0] = 0;	// OK
-		else 
-			rsp_data[0] = 1;	// ERROR
-		rsp_data[1] = WCP_SECURITY;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);	
-		usleep(PKT_WAIT_TIME);
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}			
-		if (res) {
-			delete_request_data(RQL_CONTROL);
-			update_security_info(_pkt[DATA_1_IDX]);
-		}
-		break;
-	case MCP_ELEVATOR:
-		/* [DATA_1_IDX]  호출 (0x01) 도착 (0x02) */
-		rsp_data[0] = 0;	// OK
-		rsp_data[1] = WCP_ELEVATOR;
-		rsp_data[2] = _pkt[DATA_1_IDX];
-		rsp_data[3] = 0;
-		build_pkt(pkt, CMD_WP_CTRL_ACK, rsp_data, 4);			
-		usleep(PKT_WAIT_TIME);
-		if (Write(pkt->buffer, pkt->size) <= 0) {
-			DBGMSG(DBG_WALLPAD, "<%s> Send ACK Packet Fail\r\n");
-		}
-		if ((res) && (CHECK_RQL(ctrl_data[REQ_ID_IDX], RQL_ELEVATOR)))  {
-			delete_request_data(RQL_CONTROL);		
-			report_elevator_called(_pkt);
-		}
-		break;
-	}
-}
-
-//------------------------------------------------------------------------------
-//  0xF7       0x53           0x01      0x01,0x41,0x43         xx         xx    xx    xx
-//------------------------------------------------------------------------------
-// header | device ID | sub-ID |     cmd type       | data_len | data |xor | add 
-//------------------------------------------------------------------------------
-void CWallPadEzville::ezv_parser(void)
-{
-	CContextSetup* pContextSetup = NULL;
-	ezv_pkt_info_t *pkt = &g_rcv_pkt;
-	ULONG color;	
-	int ret;
-
-	g_receiving = TRUE;
-
-	if (!pkt_rcv_n_delimeter(pkt)) {
-		//printf("<%s> Data size is not enough!\r\n", __func__);
-		return;
-	}
-
-	if (!pkt_verify(pkt)) {
-		memset(pkt, 0, sizeof(ezv_pkt_info_t));
-		return;
-	}
-	
-	g_receiving = FALSE;
-
-	switch (pkt->buffer[CMD_TYPE_IDX]) {
-	case CMD_STATUS_REQ:
-		wp_polling_pkt(pkt->buffer);
-		break;
-	case CMD_WP_STATUS_RES:
-		wp_status_pkt(pkt->buffer, pkt->size);
-		break;
-	case CMD_WP_CTRL_RES:
-		wp_ctrl_pkt(pkt->buffer);
-		break;
-	default:
-		DBGMSG(DBG_WALLPAD, "<%s> Invalid CMD TYPE: d\r\n", 
-			__func__, pkt->buffer[CMD_TYPE_IDX]);
-		break;
-	}
-	
-	if (g_isContextSetupWallPad) {
-		pContextSetup = (CContextSetup*)g_state.GetCurrContext();
-		if (pContextSetup) {
-			switch (pkt->buffer[CMD_TYPE_IDX]) {
-			case CMD_WP_STATUS_RES:
-			case CMD_WP_CTRL_RES:
-				color = LTCYAN;
-				break;
-			default:
-				color = LTGREEN;
-				break;
-			}
-			pContextSetup->PrintPacket(pkt->buffer, pkt->size, color);
-		}
-	}
-
-	memset(pkt, 0, sizeof(ezv_pkt_info_t));
-}
 

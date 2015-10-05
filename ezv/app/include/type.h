@@ -74,12 +74,4 @@ typedef struct _RECT
 } __attribute__ ((packed)) RECT;
 #endif
 
-typedef struct input_event InputData;
-
-typedef union
-{
-	ULONG		ulValue;
-	float		fValue;
-} __attribute__ ((packed)) FLOAT_CONV;
-
 #endif //__TYPE_H__
